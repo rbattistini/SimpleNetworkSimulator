@@ -1,11 +1,12 @@
 # A simple network simulation
 
-This project was realized for the course *Programmazione di Reti* of the DISI at the University of Bologna in the AY 2019/2020.
+This project was realized for the course *Programmazione di Reti* of the DISI at
+the University of Bologna in the AY 2019/2020.
 
 The aim is to simulate a small SERVER-ROUTER-CLIENT architecture on the same 
 node as shown here: 
 
-<img src="/resources/simple_network_simulation.png" alt="A picture of the network" class="center">
+![A picture of the network](resources/simple_network_simulation.png)
 
 ## Features
 
@@ -39,7 +40,8 @@ clients, routers and servers could be created to simulate the network.
 
 First see if [requirements](#dependencies) are met.
 
-Then on GNU/Linux^[1] and MacOS Catalina, chmod and launch on the terminal the script `main.py` with administrator privilegies. 
+Then on GNU/Linux^[1] and MacOS Catalina, chmod and launch on the terminal the 
+script `main.py` with administrator privilegies. 
 
 `sudo ./main.py`
 
@@ -52,7 +54,7 @@ command line arguments are given.
 
 ## Stop the simulation 
 
-Just press <kbd>CTRL</kbd> + <kbd>C</kbd> on the terminal in which the main 
+Just press `CTRL+C` on the terminal in which the main 
 script was launched. This will send a SIGINT to all the members of the network 
 launched by the main script.
 
