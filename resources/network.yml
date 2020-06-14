@@ -1,0 +1,71 @@
+server:
+
+  ip_address: "195.1.10.10"
+  mac_address: "52:AB:0A:DF:10:DC"
+  port: 8000
+
+routers:
+  router1:
+
+    Eth0:
+      ip_address: "92.10.10.1"
+      mac_address: "55:04:0A:EF:11:CF"
+      port: 8100
+
+    Eth1:
+      ip_address: "195.1.10.1"
+      mac_address: "55.04.0A:EF:10:AB"
+      port: 8200
+
+    server_port: 8000
+
+  router2:
+
+    Eth0:
+      ip_address: "195.1.10.2"
+      mac_address: "32:03:0A:CF:10:DB"
+      port: 8300
+
+    Eth1:
+      ip_address: "1.5.10.1"
+      mac_address: "32:03:0A:DA:11:DC"
+      port: 8400
+
+    server_port: 8000
+
+clients:
+  client1:
+
+    ip_address: "92.10.10.15"
+    mac_address: "32:04:0A:EF:19:CF"
+    router_port: 8100
+
+  client2:
+
+    ip_address: "92.10.10.20"
+    mac_address: "10:AF:CB:EF:19:CF"
+    router_port: 8100
+
+  client3:
+
+    ip_address: "92.10.10.25"
+    mac_address: "AF:04:67:EF:19:DA"
+    router_port: 8100
+
+  client4:
+
+    ip_address: "1.5.10.15"
+    mac_address: "42:A3:1B:DA:12:AC"
+    router_port: 8400
+
+  client5:
+
+    ip_address: "1.5.10.20"
+    mac_address: "42:A3:5B:DA:13:EF"
+    router_port: 8400
+
+  client6:
+
+    ip_address: "1.5.10.30"
+    mac_address: "44:BF:5B:DA:11:AC"
+    router_port: 8400
