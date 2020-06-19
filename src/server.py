@@ -1,135 +1,102 @@
-"""
-Code for a server that monitors online and offline clients.
+#!/usr/bin/env python3
+import socket
+import utilities as utils
 
-Note that it does NOT send messages to other clients.
+BUFFER_SIZE = 1024
 
-This server belongs to the network spanned by an arbitrary number of routers.
-"""
-from socket import AF_INET, socket, SOCK_STREAM
-import sys
-import logics
+server_data = {
+    "server_ip" : "92.10.10.05",
+    "server_mac" : "00:00:0A:BB:28:FC",
+    "server_address" : ("localhost", 8005)
+}
 
-"""
-Server binds itself to a port using a TCP socket. 
-(Why TCP and not UDP? more stable, performant connection)
+# primer for creating arp_table_socket
+routers_list = [
+    "92.10.10.10"
+]
 
-Now the server is NOT online, it is not ready to receive nor send messages.
+# not like an ARP table, used to handle multiple networks
+network_table = {
+    "92.10.10.15" : "92.10.10.10",
+    "92.10.10.20" : "92.10.10.10",
+    "92.10.10.25" : "92.10.10.10"
+}
 
-- address, (host, port)
-- backlog queue dimension
-"""
-def init(address): 
-    """
-    Creates a socket INET (IPv4 protocol) of type STREAM to connect with the 
-    server and the other router.
-    """
+arp_table_mac = {
+    "92.10.10.10" : "05:10:0A:CB:24:EF"
+}
 
-    # CREATE
+def init(server_data):
     server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-
-    # BIND
-    logics.bind_socket(address)
-
-    # BACKLOG
+    server.bind(server_data.get("server_address"))
     server.listen(2)
     return server
 
-"""
-Runs the server.
-
-It listens for any packets sent by its routers and forwards them.
-
-- server, socket given by the configuration run
-- server_data, given from the config file
-"""
-def launch(server, server_data, routers_list):
-    print ('the web server is up on port:', server_data.get("server_port"))
-    print ('Ready to serve...')
-    connect_to_routers(server, routers_list)
-    listen_packets(server_data)
-
-"""
-Waits until has established a connection with all the routers it should be
-connected, as stated in routers_list.
-
-It should be called BEFORE listen_packets.
-
-WARNING: It cannot distinguish among different routers, it only employs the 
-lenght of the list given.
-
-Returns a list of all the routers connection established.
-"""
-def connect_to_routers(server, routers_list):
-    print("Waiting for  routers...")
-    router_connections = {}
-    counter = len(routers_list)
+def listen_packets(server_connection, server_data, arp_table_socket):
+    online_clients = {} # IP address - boolean
 
     while True:
-        routerConnection, address = server.accept()
-        if(routerConnection != None):
-            print("Connected with router: ", address)
-            router_connections.add(routerConnection)
-            counter -= 1
-        if(counter is 0):
+        received_message = server_connection.recv(BUFFER_SIZE).decode("utf-8")   
+        parsed_message = utils.read_packet(received_message)     
+
+        if(parsed_message.get("message") == "{going offline}"):
+            online_clients[parsed_message.get("source_ip")] = False
+        elif(parsed_message.get("message") == "{going online}"):
+            online_clients[parsed_message.get("source_ip")] = True
+        else:
+            if(online_clients[parsed_message.get("destination_ip")] is False or online_clients[parsed_message.get("destination_ip")] is None):
+                message = "Client" + parsed_message.get("destination_ip") + "is not online: resending message back"
+                packet = write_packet(
+                    server_data.get("server_ip"),
+                    parsed_message.get("source_ip"),
+                    server_data.get("server_mac"),
+                    arp_table_mac[
+                        network_table[parsed_message.get("source_ip")]
+                    ],
+                    message
+                )
+                destination_socket =  arp_table_socket[
+                    network_table[parsed_message.get("source_ip")]
+                ]
+            else:
+                message = "Client" + parsed_message.get("destination_ip") + "is online: forwading message"
+                packet = write_packet(
+                    parsed_message.get("source_ip"),
+                    parsed_message.get("destination_ip"),
+                    server_data.get("server_mac"),
+                    arp_table_mac[
+                        network_table[parsed_message.get("destination_ip")]
+                    ],
+                    parsed_message.get("message")
+                )
+                destination_socket =  arp_table_socket[
+                    network_table[parsed_message.get("destination_ip")]
+                ]
+
+        print("Message received from: "+ parsed_message.get("source_ip"))
+        print(message)
+        destination_socket.send(bytes(packet, "utf-8")) 
+
+def connect_to_routers(server, routers_list):
+    print("Waiting for routers...")
+    arp_table_socket = {}
+
+    while True:
+        router_connection, address = server.accept()
+        if(router_connection != None):
+            print("Connected with client: ", address)
+            print(len(routers_list))
+            arp_table_socket[routers_list.pop()] = router_connection
+        if(len(routers_list) == 0):
             print("All connections established")
             break
 
-    return router_connections
+    return arp_table_socket
 
-"""
-Listens for incoming packets and resends them to the correct destination after
-dissecting them and changing ONLY the destination MAC address.
-
-It should be called AFTER connect_to_routers.
-
-- server_data, 
-- router_connections,  
-"""
-def listen_packets(server_data, router_connections):
-    while True:
-        
-        # Tiene traccia dei client online e offline: REGISTRAZIONE CLIENT
-        # popolata per la prima volta mano a mano che i client si connettono
-        # per la prima volta, dictionary id-bool
-        online_clients = {}
-
-        # dictonary id-ip address ausiliario, di modo che i client possano avere
-        # un nome
-        clients_table = {}
-        
-        packet_data = {}
-        packet = logics.write_packet(packet_data)
-
-        source_ip = server_ip
-        IP_header = IP_header + source_ip + destination_ip
-        source_mac = server_mac
-        destination_mac = router_mac         
-        ethernet_header = ethernet_header + source_mac + destination_mac
-        packet = ethernet_header + IP_header + message
-        
-        forward_message(router_connections, packet)  
-
-
-"""
-A server knows who are his routers but knows also all the clients each router
-can forward messages to? 
-
-Or it can know if the message should be forwarded to a client of the network or
-to a client of another network? Should the router tell this to the server?
-
-In other words when a server forwards a message received from a router should 
-send it to ALL its linked routers? Then each router checks if there is a client
-in its network that matches the destination ip and forwards the message to it?
-
-Sends a packet to all the routers or to only one router? Which one? 
-
-Used when a message should be sent:
-- from a client to a router, (the client only knows one router)
-- from a router to a server, (the router only knows one server)
-- from a server to a router. (the server knows multiple routers)
-
-- destination_socket, where the packet should be sent
-- packet, the correctly formatted message
-""" 
-def forward_message(destination_socket, packet):
-    destination_socket.send(bytes(packet, "utf-8"))
+if __name__ == "__main__":
+    server = init(server_data)
+    arp_table_socket = connect_to_routers(server, routers_list)
+    # send_packets(server_data, network_table, arp_table_mac, arp_table_socket)
+    listen_packets(server, server_data, arp_table_socket)
+    # mantieni un'interfaccia verso le reti attiva dopo aver stabilito le connessioni
+    # smista i messaggi

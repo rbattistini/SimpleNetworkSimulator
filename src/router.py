@@ -1,135 +1,125 @@
-"""
-Code for a router with a pre-created arp table. (Level 3 IP-ARP)
-"""
-from socket import AF_INET, socket, SOCK_STREAM
+#!/usr/bin/env python3
+import socket
 import time
-import logics
+import utilities as utils
 
+server_address = ("localhost", 8005)
 BUFFER_SIZE = 1024
 
-"""
-Router binds itself to two channels, entering and exiting.
+router_data = {
+    "server_side" :
+        { "router_ip" : "92.10.10.10",
+        "router_mac" : "05:10:0A:CB:24:EF",
+        "router_address" : ("localhost",8101)},
+    "client_side" : 
+        { "router_ip" : "92.10.10.30",
+        "router_mac" : "05:10:0A:CB:54:EF",
+        "router_address" : ("localhost",8201)}
+}
 
-Now the router is NOT online, it cannot forward messages.
+# all bound to the default gateway of their router
+clients_list = [
+    "92.10.10.15",
+    "92.10.10.20",
+    "92.10.10.25"
+]
 
-- router_data, router_port for each direction
-- backlog queue dimension
-"""
+arp_table_mac = {
+    "92.10.10.15" : "32:04:0A:EF:19:CF",
+    "92.10.10.20" : "10:AF:CB:EF:19:CF",
+    "92.10.10.25" : "AF:04:67:EF:19:DA"
+}
+
+arp_table_socket = {}
+
+class RouterThread:
+    def __init__(self, router_data):
+        self.router_clients, self.router_server = init(router_data)
+        self.running = False
+                
+    def start_listening_server_side(self, router_data, server_ip, arp_table_mac):
+        self.running = True
+
+        # connect_to_server
+        self.router_server.connect(router_data["server_address"])
+
+        arp_table_generator()
+
+        while self.running is True:
+            forward_packets(self.router_server, self.client_data, router_data)
+
+        close_server_connection()
+    
+    def listen_client_side(self):
+        print("s")
+
+    def listen_client_connection(self):
+        print("s")
+
+    def stop_listening_server_side(self):
+        self.running_server_side = False
+
+
 def init(router_data):
 
-    """ 
-    Creates a socket INET (IPv4 protocol) of type STREAM to connect with 
-    clients.
-    """
+    router_clients = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    router_clients.bind(router_data["client_side"]["router_address"])
+    router_clients.listen(5)
 
-    # CREATE
-    router_receive = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    router_server = socket.socket(socket.AF_INET, socket.SOCK_STREAM) 
+    router_server.bind(router_data["server_side"]["router_address"])
+    # router_server.listen(5)
 
-    # BIND
-    logics.bind_socket(router_receive,
-        ("localhost", router_data["router_receive_port"]))
+    return (router_clients, router_server)
 
-    # SET BACKLOG QUEUE
-    router_receive.listen(5)
-
-    """
-    Creates a socket INET (IPv4 protocol) of type STREAM to connect with the 
-    server and the other router.
-    """
-
-    # CREATE
-    router_send = socket.socket(socket.AF_INET, socket.SOCK_STREAM) 
-
-    # BIND
-    logics.bind_socket(router_send,
-        ("localhost", router_data["router_send_port"]))
-
-    # SET BACKLOG QUEUE
-    router_send.listen(5)
-
-    return (router_send, router_receive)
-
-"""
-Creates an arp table from a dictionary of clients connected to the router's 
-network.
-
-This step in necessary to allow the router to correctly forward messages.
-If an arp table is not created the router cannot do anything with the messages
-it receives.
-
-- clients_data from the config file
-"""
-def init_arp_table(clients_data):
-
-    arp_table = {}
-
-    for client in clients_data:
-        arp_table[str(client)]["ip_address"] = clients_data[str(client)]["mac_address"]
-
-"""
-Now the router can forward messages.
-
-- router_data, from the config file, all which was not used previously
-- router, created during the configuration run
-- arp_table, created during the second configuration run
-- address, of the server to be connected to
-"""
-def run(router_send, router_data, arp_table, address):
-    while (client1 == None or 
-        client2 == None or 
-        client3 == None):
-
-        # listen for new connections and return the associated socket object
-        client, address = router_send.accept()
-        print("Connection established")
-        # it is in the arp table?
-        # who is online?
-
-        if(client1 == None):
-            client1 = client
-            print("Client 1 is online")
-        
-        elif(client2 == None):
-            client2 = client
-            print("Client 2 is online")
-        else:
-            client3 = client
-            print("Client 3 is online")
-
-    router_send.connect(address) 
+def connect_to_clients(router_clients, router_server, clients_list, server_address):
+    print("Waiting for clients...")
+    arp_table_socket = {}
 
     while True:
-        try:
-            # it must wait for one of the clients to connect and send a message
-            received_message = router_send.recv(BUFFER_SIZE).decode("utf-8")
-        # if an error occurs probably is due to the router abandoning the 
-        # network
-        except OSError:
+        client_connection, address = router_clients.accept()
+        if(client_connection != None):
+            print("Connected with client: ", address)
+            print(len(clients_list))
+            arp_table_socket[clients_list.pop()] = client_connection
+        if(len(clients_list) == 0):
+            print("All connections established")
             break
-        
-        # as soon the message is received is printed and routed to the server
-        message = logics.read_packet(received_message)
-        logics.report(message, false)
-        logics.assemble_packet(message)
 
-        ethernet_header = router_mac + arp_table_mac[destination_ip]    
-        IP_header = source_ip + destination_ip    
-        packet = ethernet_header + IP_header + message
+    server = (server_address)
+    router_server.connect(server) # router_server is bound to a port
 
+    return arp_table_socket
 
-        destination_socket = arp_table_socket[destination_ip]
-        
-        # it must wait for the server to receive the routed message
-        # sends an utf-8 encoded byte stream to the destination socket
+"""
+Listens for packets received from the server and sends them to the clients 
+of his network.
+"""
+def forward_packets(router_server, arp_table, arp_table_socket, router_data):
+    while True:
+
+        received_message = router_server.recv(BUFFER_SIZE).decode("utf-8")   
+        parsed_message = utils.read_packet(received_message)     
+        utils.report(parsed_message)
+
+        parsed_message.update(
+            destination_mac=arp_table[
+                parsed_message.get("destination_ip")
+            ],
+            source_mac=router_data["client_side"]["router_mac"]
+        )
+
+        destination_socket = arp_table_socket[
+            parsed_message.get("destination_ip")
+        ]
+
+        packet = utils.modify_packet(parsed_message)
         destination_socket.send(bytes(packet, "utf-8"))
         time.sleep(2)
 
-"""
-Listens for incoming packets from clients and forwards them to the server after 
-dissecting them and changing ONLY the destination MAC address.
-
-Listens for incoming packets from the server and forwards them to the client
-after dissecting them and changing ONLY the destination MAC address.
-"""
-def listen_packets():
-    print("forwading incoming packets")
+if __name__ == "__main__":
+    router_clients, router_server = init(router_data)
+    arp_table_socket = connect_to_clients(router_clients, router_server, clients_list, server_address)
+    forward_packets(router_server, arp_table_mac, arp_table_socket, router_data)
+    # mantieni attiva un'interfaccia verso il server
+    # su richiesta attiva un'interfaccia verso il client

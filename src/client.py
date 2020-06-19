@@ -1,63 +1,134 @@
-"""
-Code for a client that can be online and offline and can both send and receive
-messages.
-"""
-from socket import AF_INET, socket, SOCK_STREAM
-import time
-import logics
+import socket
+import error_handling as check
+import utilities as utils
 
 BUFFER_SIZE = 1024
 
-# HOW DOES THIS WORK??
-# The client only knows the port on which the router is and the destination_ip!!
-# It needs to know also the ip and mac address of the router to send messages???
-"""
-Client establishes a connection with its router. 
+class Client:
 
-Now the client is online but it cannot receive nor send messages.
+    def __init__(self, client_threads, arp_table_mac, client_data):
 
-- address of the router, is given by the test class and extracted from 
-the config file. 
-"""
-def initialize(address):
-    client = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    time.sleep(1)
-    # waits to be captured by an accept in the router
-    # the router MUST be started first!!!
-    client.connect(address)
-    return client
+        self.client_connection = socket.socket(
+            socket.AF_INET,
+            socket.SOCK_STREAM
+        )
+        self.running = False
+        self.client_threads = client_threads
+        self.arp_table_mac = arp_table_mac
+        self.client_data = client_data
+                
+    def run(self, server_ip):
+        self.running = True
+        self.connected = False
 
-"""
-Client is able to receive and send data on the network.
+        # connect to router
+        connected = self.client_go_online(server_ip)
 
-It periodically does so until it has tried to contact all the clients on his
-agenda.
+        if(connected is True):
+            while self.running is True:
+                self.listen_packets()
 
-- client is given from the configuration run.
-- client_data from the config file.
-"""
-def run(client, client_data):
-    # this loop is infinite because the client should always check if there are
-    # incoming messages and should always be able to send messages while online.
-    while True:
-        # SEND
-        logics.send_message()
-
-        time.sleep(3)
-
-        # HOW DOES THIS WORK??
-        # RECEIVE (it must wait for the router to be ready) 
-        # simply display the message received and checks if it was correctly
-        # routed. NO registration in a list.
-        received_message = logics.rcv_msg(client, BUFFER_SIZE)
+            self.client_go_offline(server_ip)
         
-        if(received_message is not None):
-            # ANALYZE
-            decoded_message = received_message.decode("utf-8")
-            message = logics.read_packet(decoded_message)
+        # exit procedure
+        print(self.client_threads)
+        del self.client_threads[self]
+        
+    """
+    Tells the client to go offline and consequently close its connection to the 
+    network.
+    """
+    def stop_listening(self):
+        self.running = False
+        
+    """
+    Sends packets to other clients.
+    """    
+    def send_message(self, recipient_ip, message):
 
-            # DISPLAY
-            if(logics.integrity_check(client_data)):
-                logics.report(message)
-            
-        time.sleep(3)
+        gateway_ip = self.client_data.get("gateway_ip")
+
+        packet = utils.write_packet(
+            self.client_data["ip_address"],
+            recipient_ip,
+            self.client_data.get["mac_address"],
+            self.arp_table_mac[gateway_ip],
+            message
+        )
+        check.socket_send(
+            self.client_connection,
+            packet,
+            "Requested message could not be sent"
+        )
+
+    """
+    Sends a special packet to notify the server it is currently online.
+    """ 
+    def client_go_online(self, server_ip):
+        
+        router_address = self.client_data.get("router_address")
+        gateway_ip = self.client_data.get("gateway_ip")
+
+        connected = check.socket_connect(
+            self.client_connection, 
+            router_address,
+            "Terminating thread"
+        )
+
+        if(connected is False):
+            return False  
+        else:
+            print("client going online...")
+
+            greeting_packet = utils.write_packet(
+                self.client_data.get("ip_address"),
+                server_ip,
+                self.client_data.get("mac_address"),
+                self.arp_table_mac[gateway_ip],
+                "{going online}"
+            )
+
+            check.socket_send(
+                self.client_connection,
+                greeting_packet,
+                "Greeting packet could not be sent"
+            )
+
+            return True
+
+    """
+    Sends a special packet to notify the server it is currently offline.
+    """ 
+    def client_go_offline(self, server_ip):
+        
+        print("client going offline...")
+        gateway_ip = self.client_data.get("gateway_ip")
+
+        leave_packet = utils.write_packet(
+            self.client_data.get("ip_address"),
+            server_ip,
+            self.client_data.get("mac_address"),
+            self.arp_table_mac[gateway_ip],
+            "{going offline}"
+        )
+
+        check.socket_send(
+            self.client_connection,
+            leave_packet,
+            "Leave packet could not be sent"
+        )
+
+        self.client_connection.close()
+
+    """
+    Listens for packets from the server.
+    """
+    def listen_packets(self):
+
+            received_message = check.socket_recv(
+                self.client_connection,
+                "Requested message could not be sent"
+            ) 
+
+            parsed_message = utils.read_packet(received_message)     
+            utils.report(parsed_message)
