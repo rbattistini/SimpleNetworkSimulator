@@ -1,7 +1,7 @@
 """
-Code for a router with a pre-created arp table.
+Code for a router with a pre-created arp table. (Level 3 IP-ARP)
 """
-import socket
+from socket import AF_INET, socket, SOCK_STREAM
 import time
 import logics
 
@@ -64,7 +64,7 @@ def init_arp_table(clients_data):
     arp_table = {}
 
     for client in clients_data:
-        arp_table_mac[str(client)]["ip_address"] = clients_data[str(client)]["mac_address"]
+        arp_table[str(client)]["ip_address"] = clients_data[str(client)]["mac_address"]
 
 """
 Now the router can forward messages.
@@ -72,8 +72,9 @@ Now the router can forward messages.
 - router_data, from the config file, all which was not used previously
 - router, created during the configuration run
 - arp_table, created during the second configuration run
+- address, of the server to be connected to
 """
-def run(router, router_data, arp_table):
+def run(router_send, router_data, arp_table, address):
     while (client1 == None or 
         client2 == None or 
         client3 == None):
@@ -95,15 +96,19 @@ def run(router, router_data, arp_table):
             client3 = client
             print("Client 3 is online")
 
-    router.connect(server) 
+    router_send.connect(address) 
 
     while True:
-        # it must wait for one of the clients to connect and send a message
-        received_message = router.recv(BUFFER_SIZE)
-
+        try:
+            # it must wait for one of the clients to connect and send a message
+            received_message = router_send.recv(BUFFER_SIZE).decode("utf-8")
+        # if an error occurs probably is due to the router abandoning the 
+        # network
+        except OSError:
+            break
+        
         # as soon the message is received is printed and routed to the server
-        decoded_message =  received_message.decode("utf-8")
-        message = logics.read_packet(decoded_message)
+        message = logics.read_packet(received_message)
         logics.report(message, false)
         logics.assemble_packet(message)
 
@@ -118,3 +123,13 @@ def run(router, router_data, arp_table):
         # sends an utf-8 encoded byte stream to the destination socket
         destination_socket.send(bytes(packet, "utf-8"))
         time.sleep(2)
+
+"""
+Listens for incoming packets from clients and forwards them to the server after 
+dissecting them and changing ONLY the destination MAC address.
+
+Listens for incoming packets from the server and forwards them to the client
+after dissecting them and changing ONLY the destination MAC address.
+"""
+def listen_packets():
+    print("forwading incoming packets")

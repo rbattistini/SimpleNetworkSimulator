@@ -77,7 +77,8 @@ def connect_to_routers(server, routers_list):
     return router_connections
 
 """
-Listens for incoming packets and send them to the correct destination.
+Listens for incoming packets and resends them to the correct destination after
+dissecting them and changing ONLY the destination MAC address.
 
 It should be called AFTER connect_to_routers.
 

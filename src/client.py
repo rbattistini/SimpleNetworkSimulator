@@ -2,9 +2,11 @@
 Code for a client that can be online and offline and can both send and receive
 messages.
 """
-import socket
+from socket import AF_INET, socket, SOCK_STREAM
 import time
 import logics
+
+BUFFER_SIZE = 1024
 
 # HOW DOES THIS WORK??
 # The client only knows the port on which the router is and the destination_ip!!
@@ -35,6 +37,8 @@ agenda.
 - client_data from the config file.
 """
 def run(client, client_data):
+    # this loop is infinite because the client should always check if there are
+    # incoming messages and should always be able to send messages while online.
     while True:
         # SEND
         logics.send_message()
@@ -43,7 +47,9 @@ def run(client, client_data):
 
         # HOW DOES THIS WORK??
         # RECEIVE (it must wait for the router to be ready) 
-        received_message = client.recv(1024)
+        # simply display the message received and checks if it was correctly
+        # routed. NO registration in a list.
+        received_message = logics.rcv_msg(client, BUFFER_SIZE)
         
         if(received_message is not None):
             # ANALYZE

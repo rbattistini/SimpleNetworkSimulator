@@ -1,16 +1,32 @@
 import logging
 
 """
-Used by clients to create new messages that will be composed in packets and sent
-through the network.
+Used by clients to create new messages that will be composed in packets by
+the router and sent through the network. The client will include in the msg the 
+actual string with the message and the destination_ip.
 
 Server should not create new messages, only the clients should use this 
 function.
+
+- msg, (destination_ip, message)
+- sending_socket, the socket from which the message can be sent
 """
-def send_message(destination_ip):
-    message = create_message()
-    write_packet()
-    destination_socket.send(bytes(packet, "utf-8"))
+def send_message(msg, sending_socket):
+    # msg = create_msg(destination_ip, msg)
+    # write_packet()
+    sending_socket.send(bytes(msg, "utf-8"))
+
+"""
+Used by a client to close its socket.
+"""
+def go_offline():
+    print("Going offline")
+
+"""
+Used by a client to reopen its socket after initialization.
+"""
+def go_online():
+    print("Going online")
 
 """
 States how a packet is created.
@@ -24,15 +40,23 @@ function.
 """
 def write_packet(message_data):
 
-    IP_header = message_data.get("source_ip")
-    + message_data.get("destination_ip")     
+    IP_header = message_data.get("source_ip") + message_data.get("destination_ip")     
     
-    ethernet_header =  message_data.get("source_mac") 
-    + message_data.get("destination_mac")
+    ethernet_header =  message_data.get("source_mac") + message_data.get("destination_mac")
 
     packet = ethernet_header + IP_header + message_data.get("message")
 
     return packet
+
+
+"""def create_message(source_ip, destination_ip, source_mac, destination_mac, payload):
+    message["source_ip"] = source_ip
+    message["destination_ip"] = destination_ip
+    message["source_mac"] = source_mac
+    message["destination_mac"] = destination_mac
+    message["message"] = payload
+    return message"""
+
 
 """
 States how the header of a packet should be read.
@@ -58,14 +82,14 @@ Prints a message received by an entity of the network.
 """
 def report(parsed_message):
 
-    print("* Packet source:")
+    print("* Packet Level 2:")
 
     print("Source MAC address:", parsed_message.get("source_mac"), 
-    "Source IP address: ", parsed_message.get("source_ip"))
+    "Destination MAC address: ", parsed_message.get("destination_mac"))
 
-    print("* Packet destination:")
+    print("* Packet Level 3:")
 
-    print("Destination MAC address:",parsed_message.get("destination_mac"), 
+    print("Source IP address:",parsed_message.get("source_ip"), 
     "Destination IP address: ", parsed_message.get("destination_ip"))
 
     print("* Message:")
@@ -89,12 +113,27 @@ def integrity_check(client_data):
 """
 Tries to bind the socket to the host and port specified.
 """
-def bind_socket(socket, to_bind):
+def bind_socket(socket, address):
     try:
-        socket.bind(to_bind)
+        socket.bind(address)
     except socket.error as msg:
         print('Bind failed. Error Code : ' + str(msg[0]) + ' Message ' + msg[1])
     print('Socket bind complete')
+
+"""
+Tries to receive a message from the socket given with the buffer size specified.
+"""
+def rcv_msg(socket, buffer_size):
+    try:
+        # it must wait for one of the clients to connect and send a message
+        received_message = socket.recv(buffer_size).decode("utf-8")
+        # if an error occurs probably is due to the router abandoning the 
+        # network
+    except OSError as msg:
+        print("Message cannot be received. Error Code : " + str(msg[0]) 
+        + " Message " + msg[1])
+    print("Message successfully received")
+    return received_message
 
 """
 Sets up a simple logger which outputs to log_file.
@@ -105,3 +144,17 @@ def logger(log_file):
         filename= log_file,
         level=logging.INFO
     )
+
+"""
+Each entity of the network has an arp table. IP del destinatario è noto. 
+(default gateway della rete) manca MAC address del default gateway
+-> ARP request con indirizzo mac Address FF:FF:FF:FF:FF
+IL MAC address del default gateway è necessario!!!
+Aspetta una ARP request per compilare la sua arp table.
+ARP configuration completed.
+
+Livello 2 mac address
+Livello 3 ip address
+
+
+"""
