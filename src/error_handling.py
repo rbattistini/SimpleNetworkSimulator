@@ -24,7 +24,9 @@ def socket_send(connection, packet, additional_error_message = ""):
     except socket.error as msg:
         print(default_error_message, msg)
         print(additional_error_message)
-
+        return False
+    return True
+    
 def socket_recv(connection, additional_error_message = "", buffer_size = 1024):
     try:
         received_message = connection.recv(buffer_size).decode("utf-8")
