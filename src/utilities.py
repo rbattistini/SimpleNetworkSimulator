@@ -3,6 +3,7 @@ Utility functions.
 
 Three sections:
 
+- logging
 - packet structure conventions,
 - user input validation,
 - terminal interaction improvements
@@ -10,6 +11,19 @@ Three sections:
 """
 import os
 import sys
+import logging
+
+# logging
+
+"""
+Sets up a simple logger which outputs to log_file.
+"""
+def logger(log_file):
+    logging.basicConfig(
+        format="%(asctime)s %(message)s",
+        filename= log_file,
+        level=logging.INFO
+    )
 
 # packet structure conventions
 
@@ -62,12 +76,12 @@ Read a packet following the rules adopted.
 """
 def report(parsed_message):
 
-    print("* Packet Level 2:")
+    print("Level 2:")
 
     print("Source MAC address:", parsed_message.get("source_mac"), 
     "Destination MAC address: ", parsed_message.get("destination_mac"))
 
-    print("* Packet Level 3:")
+    print("Level 3:")
 
     print("Source IP address:",parsed_message.get("source_ip"), 
     "Destination IP address: ", parsed_message.get("destination_ip"))
@@ -76,6 +90,19 @@ def report(parsed_message):
     print(parsed_message.get("message"))
 
     print_separator()
+
+"""
+Performs an integrity check to see if the client should have received this 
+packet.
+"""
+def integrity_check(client_id, client_data, parsed_message):
+    print("Packet integrity check:")
+
+    print("destination MAC address matches client", client_id, " MAC address: ",
+    client_data.get("mac_address") == parsed_message.get("destination_mac"))
+
+    print("destination IP address matches client ", client_id, " IP address:",
+    client_data.get("ip_address") == parsed_message.get("destination_ip"))
 
 # user input validation
 
@@ -116,3 +143,12 @@ def print_separator():
 def clear():
     os.system('cls' if os.name == 'nt' else 'clear')
     # works both on posix and nt
+
+def show_termination():
+    input("Press any key to return to the helm" + "\nCommand status:")
+    clear()
+
+def show_entity_status(entity_id, action):
+    message = "[", entity_id , "]" +  ": " + action
+    print(message)
+    logging.info(message)
