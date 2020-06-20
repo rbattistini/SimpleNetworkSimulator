@@ -1,102 +1,178 @@
-#!/usr/bin/env python3
 import socket
 import utilities as utils
+import error_handling as check
 
 BUFFER_SIZE = 1024
 
-server_data = {
-    "server_ip" : "92.10.10.05",
-    "server_mac" : "00:00:0A:BB:28:FC",
-    "server_address" : ("localhost", 8005)
-}
+class Server:
 
-# primer for creating arp_table_socket
-routers_list = [
-    "92.10.10.10"
-]
+    def __init__(self, server_thread, arp_table_mac, routers_gateway_ip,
+     server_data, server_id):
+        self.server_connection = socket.socket(
+            socket.AF_INET,
+            socket.SOCK_STREAM
+        )
+        self.server_connection.bind(server_data.get("port"))
+        self.server_connection.listen(2)
 
-# not like an ARP table, used to handle multiple networks
-network_table = {
-    "92.10.10.15" : "92.10.10.10",
-    "92.10.10.20" : "92.10.10.10",
-    "92.10.10.25" : "92.10.10.10"
-}
+        self.running = False
+        self.routers_gateway_ip = routers_gateway_ip
+        self.server_thread = server_thread
+        self.server_data = server_data
+        self.server_id = server_id
 
-arp_table_mac = {
-    "92.10.10.10" : "05:10:0A:CB:24:EF"
-}
+        self.arp_table_mac = arp_table_mac
+        self.arp_table_socket = {}
 
-def init(server_data):
-    server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    server.bind(server_data.get("server_address"))
-    server.listen(2)
-    return server
+    def run(self):
+        self.online_clients = {} # IP address - boolean
+        self.running = True
+        self.connected = False
+        
+        # connect to router
+        utils.show_status(self.server_id, "connecting to the network")
+        connected = self.server_go_online()
 
-def listen_packets(server_connection, server_data, arp_table_socket):
-    online_clients = {} # IP address - boolean
+        if(connected is True):
+            utils.show_status(self.client_id, "connected to the network")
+            while self.running is True:
+                utils.show_status(self.client_id,
+                 "listening for incoming packets")
+                self.listen_packets()
+        
+        # exit procedure
+        self.server_connection.close()
+        utils.show_status(self.server_id,
+                 "going offline")
+        del self.server_thread[self]
 
-    while True:
-        received_message = server_connection.recv(BUFFER_SIZE).decode("utf-8")   
-        parsed_message = utils.read_packet(received_message)     
+    """
+    Tells the server to go offline and consequently close its connection to the 
+    network.
+    """
+    def stop_listening(self):
+        self.running = False
 
-        if(parsed_message.get("message") == "{going offline}"):
-            online_clients[parsed_message.get("source_ip")] = False
-        elif(parsed_message.get("message") == "{going online}"):
-            online_clients[parsed_message.get("source_ip")] = True
+    def mark_client_offline(self):
+        self.online_clients[parsed_message.get("source_ip")] = False
+
+    def mark_client_online(self):
+        self.online_clients[parsed_message.get("source_ip")] = True
+
+    def is_client_unreachable(self):
+        return self.online_clients[
+            self.parsed_message.get("destination_ip")
+            ] is False or 
+            self.online_clients[
+            self.parsed_message.get("destination_ip")
+            ] is None
+
+    def resend_back_message(self):    
+        msg = "Client" + self.parsed_message.get("destination_ip") + "is not online: resending message back"
+        utils.show_status(self.server_id, msg)
+
+        packet = utils.write_packet(
+            self.server_data.get("server_ip"),
+            self.parsed_message.get("source_ip"),
+            self.server_data.get("server_mac"),
+            self.arp_table_mac[
+                self.server_data["gateway_ip"]
+            ],
+            "Client not currently available"
+        )
+        
+        destination_socket =  self.arp_table_socket[
+            self.server_data["gateway_ip"]
+        ]
+
+        check.socket_send(
+            destination_socket,
+            packet,
+            "Could not send the message"
+        )
+
+    def forward_message(self):
+        msg = "Client" + self.parsed_message.get("destination_ip") + "is online: forwading message"
+        utils.show_status(self.server_id, msg)
+
+        packet = utils.write_packet(
+            self.parsed_message.get("source_ip"),
+            self.parsed_message.get("destination_ip"),
+            self.server_data.get("server_mac"),
+            self.arp_table_mac[
+                self.server_data["gateway_ip"]
+            ],
+            self.parsed_message.get("message")
+        )
+
+        destination_socket =  self.arp_table_socket[
+            self.server_data["gateway_ip"]
+        ]
+
+        check.socket_send(
+            destination_socket,
+            packet,
+            "Could not send the message"
+        )
+
+    """
+    States what type of messages the server can handle.
+    """
+    def handle_message(self):
+        if(self.parsed_message.get("message") == "{going offline}"):
+            self.mark_client_offline()
+        elif(self.parsed_message.get("message") == "{going online}"):
+            self.mark_client_online()
+        elif(self.is_client_unreachable()):
+            resend_back_message()
         else:
-            if(online_clients[parsed_message.get("destination_ip")] is False or online_clients[parsed_message.get("destination_ip")] is None):
-                message = "Client" + parsed_message.get("destination_ip") + "is not online: resending message back"
-                packet = write_packet(
-                    server_data.get("server_ip"),
-                    parsed_message.get("source_ip"),
-                    server_data.get("server_mac"),
-                    arp_table_mac[
-                        network_table[parsed_message.get("source_ip")]
-                    ],
-                    message
-                )
-                destination_socket =  arp_table_socket[
-                    network_table[parsed_message.get("source_ip")]
-                ]
-            else:
-                message = "Client" + parsed_message.get("destination_ip") + "is online: forwading message"
-                packet = write_packet(
-                    parsed_message.get("source_ip"),
-                    parsed_message.get("destination_ip"),
-                    server_data.get("server_mac"),
-                    arp_table_mac[
-                        network_table[parsed_message.get("destination_ip")]
-                    ],
-                    parsed_message.get("message")
-                )
-                destination_socket =  arp_table_socket[
-                    network_table[parsed_message.get("destination_ip")]
-                ]
+            forward_message()
+    
+    """
+    Listens for packets from the routers.
+    """
+    def listen_packets(self):   
+        
+        while True:
+            received_message = check.socket_recv(
+                self.server_connection,
+                "Could not receive the message"
+            )
 
-        print("Message received from: "+ parsed_message.get("source_ip"))
-        print(message)
-        destination_socket.send(bytes(packet, "utf-8")) 
+            if(received_message is not None):
+                self.parsed_message = utils.read_packet(received_message)
 
-def connect_to_routers(server, routers_list):
-    print("Waiting for routers...")
-    arp_table_socket = {}
+                msg = "Message received from: " + self.parsed_message["source_ip"]
+                utils.show_status(self.server_id, msg)
 
-    while True:
-        router_connection, address = server.accept()
-        if(router_connection != None):
-            print("Connected with client: ", address)
-            print(len(routers_list))
-            arp_table_socket[routers_list.pop()] = router_connection
-        if(len(routers_list) == 0):
-            print("All connections established")
-            break
+                # four possibilities:
+                # 1. a client notifies it is online 
+                # 2. a client notifies it is offline
+                # 3. a message should be sent back to a client
+                # 4. a message should be forwarded to another client
+                handle_message()
 
-    return arp_table_socket
+    """
+    The server should be able to recognize the incoming connection associated to
+    its default gateway and to accept all other connections.
 
-if __name__ == "__main__":
-    server = init(server_data)
-    arp_table_socket = connect_to_routers(server, routers_list)
-    # send_packets(server_data, network_table, arp_table_mac, arp_table_socket)
-    listen_packets(server, server_data, arp_table_socket)
-    # mantieni un'interfaccia verso le reti attiva dopo aver stabilito le connessioni
-    # smista i messaggi
+    This way it can connect only with the needed router.
+    """
+    def server_go_online(self):
+
+        # wait for all routers to connect and selectively builds its arp table socket (only one entry is needed)
+        connections = len(self.routers_gateway_ip)
+        while True:
+            router_connection, address = self.server_connection.socket_accept("Connection could not be established")
+            
+            if(router_connection != None):
+                print("Connected with router: ", address)
+                connections -= 1
+                if(self.routers_gateway_ip[address[1]] == self.server_data["gateway_ip"]):
+                    self.arp_table_socket[self.server_data["gateway_ip"]] = router_connection
+            if(connections == 0):
+                print("All connections established")
+                break
+
+        return any(self.arp_table_socket)
+
