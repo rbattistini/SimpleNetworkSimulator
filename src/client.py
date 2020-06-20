@@ -6,7 +6,7 @@ BUFFER_SIZE = 1024
 
 class Client:
 
-    def __init__(self, client_threads, arp_table_mac, client_data):
+    def __init__(self, client_threads, arp_table_mac, client_data, client_id):
 
         self.client_connection = socket.socket(
             socket.AF_INET,
@@ -16,21 +16,26 @@ class Client:
         self.client_threads = client_threads
         self.arp_table_mac = arp_table_mac
         self.client_data = client_data
+        self.client_id = client_id
                 
-    def run(self, server_ip):
+    def run(self):
         self.running = True
         self.connected = False
+        server_ip = self.client_data.get("server_ip")
 
         # connect to router
-        connected = self.client_go_online(server_ip)
+        utils.show_status(self.client_id, "connecting to the network")
+        connected = self.go_online(server_ip)
 
         if(connected is True):
             while self.running is True:
                 self.listen_packets()
 
-            self.client_go_offline(server_ip)
+            self.go_offline(server_ip)
         
         # exit procedure
+        utils.show_status(self.client_id,
+                 "going offline")
         print(self.client_threads)
         del self.client_threads[self]
         
@@ -55,16 +60,20 @@ class Client:
             self.arp_table_mac[gateway_ip],
             message
         )
-        check.socket_send(
+        sent = check.socket_send(
             self.client_connection,
             packet,
             "Requested message could not be sent"
         )
 
+        if(sent is True):
+            msg = "message sent to " + gateway_ip
+            utils.show_status(self.client_id, msg)
+
     """
     Sends a special packet to notify the server it is currently online.
     """ 
-    def client_go_online(self, server_ip):
+    def go_online(self, server_ip):
         
         router_address = self.client_data.get("router_address")
         gateway_ip = self.client_data.get("gateway_ip")
@@ -99,7 +108,7 @@ class Client:
     """
     Sends a special packet to notify the server it is currently offline.
     """ 
-    def client_go_offline(self, server_ip):
+    def go_offline(self, server_ip):
         
         print("client going offline...")
         gateway_ip = self.client_data.get("gateway_ip")
@@ -125,10 +134,21 @@ class Client:
     """
     def listen_packets(self):
 
+            utils.show_status(self.client_id, "listening for incoming packets")
+
             received_message = check.socket_recv(
                 self.client_connection,
-                "Requested message could not be sent"
+                "Could not receive the message"
             ) 
 
-            parsed_message = utils.read_packet(received_message)     
-            utils.report(parsed_message)
+            if(received_message is not None):
+                parsed_message = utils.read_packet(received_message)
+
+                msg = "Message received from: " + parsed_message["source_ip"]
+                utils.show_status(self.client_id, msg)
+ 
+                utils.report(parsed_message)
+            
+            utils.show_termination()
+
+
