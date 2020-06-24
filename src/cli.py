@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import sys
+import signal
 import utilities as utils
 import commands as cmd
 import data_handling as data
@@ -21,50 +22,38 @@ prompt_dict = {
 
 def init():
     network_data = data.load_network()
-    client_ids = data.load_client_ids()
+    # unpack dictionaries
+    servers_data = network_data["servers_data"]
+    routers_data = network_data["routers_data"]
+    clients_data = network_data["clients_data"]
 
-    server_thread = {}
-    router_threads = {}
-    client_threads = {}
+    client_ids = data.load_client_ids(clients_data)
 
-    entity_threads = {
-        "server_thread" : server_thread,
-        "router_threads" : router_threads,
-        "client_threads" : client_threads
+    servers_thread = {}
+    routers_threads = {}
+    clients_threads = {}
+
+    entities_threads = {
+        "servers_threads" : servers_thread,
+        "routers_threads" : routers_threads,
+        "clients_threads" : clients_threads
     }
 
-    # unpack dictionaries
-    server_data = network_data["servers_data"]
-    routers_data = network_data["routers_data"]
-    # clients_data = network_data["clients_data"]
-
     # launch server
-    for server_id, server_data in server_data:
-        cmd.launch_server(server_thread, server_id, server_data, routers_data)
+    for server_id, server_data in servers_data.items():
+        cmd.launch_server(servers_thread, server_id, server_data, routers_data)
 
     # launch routers
-    for router_id, router_data in routers_data:
-        cmd.launch_router(router_threads, router_id, router_data)
+    for router_id, router_data in routers_data.items():
+        cmd.launch_router(router_id, entities_threads, network_data)
 
-    return network_data, entity_threads, client_ids
+    return network_data, entities_threads, client_ids
 
 def show_welcome():
-    data.load_text("ascii.txt")
+    data.load_text("../resources/ascii.txt")
     input("Press any key to initialize the network" + "\n> ")
     utils.clear()
 
-"""
-Used by show_network_status to gather info about the currents status of the
-simulated network.
-"""
-def entity_status(row_format, entity_list, online_entity_list):
-    status = ""
-    for entity in entity_list:
-        if(entity in online_entity_list):
-            status = " online\n"
-        else:
-            status = " offline\n"
-        print(row_format.format(entity,status), end="")
 
 """
 Prints a table showing currently active entities.
@@ -72,27 +61,20 @@ Prints a table showing currently active entities.
 def show_network_status(network_data, entity_threads):
 
     # unpack dictionaries
-    server_data = network_data["server_data"]
+    servers_data = network_data["servers_data"]
     routers_data = network_data["routers_data"]
     clients_data = network_data["clients_data"]
 
-    server_thread = entity_threads["server_thread"]
-    router_threads = entity_threads["router_threads"]
-    client_threads = entity_threads["client_threads"]
+    servers_thread = entity_threads["servers_threads"]
+    routers_threads = entity_threads["routers_threads"]
+    clients_threads = entity_threads["clients_threads"]
 
-    row_format = " {:<10} |  {:>8}"
+    row_format = " {:<15} | {:<15} | {:<15}"
 
-    print("Network status:")
-    utils.print_separator()
-
-    print(row_format.format("entity", "status "))
-    string = ""
-    for _ in range(0,25):  string = string + '-'
-    print(string)
-
-    entity_status(row_format, server_data, server_thread)
-    entity_status(row_format, routers_data, router_threads)
-    entity_status(row_format, clients_data, client_threads)
+    cmd.show_table_header("Network status:", row_format)
+    cmd.hosts_status(servers_data, servers_thread, row_format)
+    cmd.routers_status(routers_data, routers_threads, row_format)
+    cmd.hosts_status(clients_data, clients_threads, row_format)
 
     utils.print_separator()
 
@@ -100,12 +82,10 @@ def show_network_status(network_data, entity_threads):
 Prints a list of the available commands taken from the given commands_list.
 """
 def show_prompt(commands_list):
-    command_prompt = prompt_dict.get("header")
+    command_prompt = prompt_dict["header"]
     for command in commands_list:
-        command_prompt = command_prompt + "\n" + "[" 
-        + str(commands_list.index(command) + 1) + "]: " 
-        + command
-    command_prompt = command_prompt + prompt_dict.get("footer")
+        command_prompt = command_prompt + "\n" + "[" + str(commands_list.index(command) + 1) + "]: " + command
+    command_prompt = command_prompt + prompt_dict["footer"]
     print(command_prompt)
 
 """
@@ -116,26 +96,29 @@ def launch_command(command, network_data, entity_threads, client_ids):
      # unpack dictionaries
     routers_data = network_data["routers_data"]
     clients_data = network_data["clients_data"]
-    client_threads = entity_threads["client_threads"]
+    clients_threads = entity_threads["clients_threads"]
+    routers_threads = entity_threads["routers_threads"]
 
     if(command == "Make a client connect"):
         cmd.client_go_online(
             client_ids,
-            client_threads,
+            clients_threads,
             clients_data,
-            routers_data
+            routers_data,
+            routers_threads
         )
 
     elif(command == "Make a client disconnect"):
         cmd.client_go_offline(
             client_ids,
-            client_threads
+            clients_data,
+            clients_threads
         )
 
     elif(command == "Send a message (requires an online client)"):
         cmd.send_message_routine(
             client_ids,
-            client_threads,
+            clients_threads,
             clients_data
         )
 
@@ -145,42 +128,36 @@ def launch_command(command, network_data, entity_threads, client_ids):
         cmd.clean_quit(entity_threads)
 
 """
-Used to clean up before exiting.
-"""
-def signal_handler(signal, frame, entity_threads):
-    print( 'Exiting simulation (Ctrl+C pressed)')
-    cmd.clean_quit(entity_threads)
-
-"""
 Command line interface main loop.
 """
-def launch_helm():
-
-    # show_welcome()
-    network_data, entity_threads, client_ids = init()
-
-    # TODO: add signal handler
+def launch_cli():
+    
+    utils.config_logger("debug.log")
+    show_welcome()
+    network_data, entities_threads, client_ids = init()
+    signal.signal(signal.SIGINT, cmd.MyHandler(entities_threads))
 
     try:
         while True:  
-            show_network_status(network_data,entity_threads)
+            show_network_status(network_data,entities_threads)
             show_prompt(command_ids)
-            command_id = utils.retrieve_id(utils.is_in_list, command_ids)
+            command_id = utils.retrieve_id(utils.is_in_list, command_ids, command_ids)
 
-            utils.clear()
+            #utils.clear()
             utils.print_separator()
 
             launch_command(
                 command_ids[command_id],
                 network_data,
-                entity_threads,
+                entities_threads,
                 client_ids
             )
 
-            utils.clear()
+            #utils.clear()
 
     except KeyboardInterrupt:
         pass
 
-launch_helm() 
+if __name__ == '__main__':
+    launch_cli() 
 

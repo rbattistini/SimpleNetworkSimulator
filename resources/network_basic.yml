@@ -1,0 +1,53 @@
+servers:
+
+  server:
+    ip_address: "195.1.10.10"
+    mac_address: "52:AB:0A:DF:10:DC"
+    port: 8001
+    gateway_port: 8200
+    gateway_ip: "195.1.10.1"
+
+routers:
+  router1:
+
+    client_side:
+      ip_address: "92.10.10.1"
+      mac_address: "55:04:0A:EF:11:CF"
+      port: 8100
+
+    server_side:
+      ip_address: "195.1.10.1"
+      mac_address: "55.04.0A:EF:10:AB"
+      port: 8200
+      server_ip: "195.1.10.10"
+
+    network_connections: # list routers and server
+      "195.1.10.10" : 8001
+
+clients:
+  client1:
+
+    ip_address: "92.10.10.15"
+    mac_address: "32:04:0A:EF:19:CF"
+    port: 8020
+    gateway_port: 8100
+    gateway_ip: "92.10.10.1"
+    server_ip: "195.1.10.10"
+
+  client2:
+
+    ip_address: "92.10.10.20"
+    mac_address: "10:AF:CB:EF:19:CF"
+    port: 8021
+    gateway_port: 8100
+    gateway_ip: "92.10.10.1"
+    server_ip: "195.1.10.10"
+
+  client3:
+
+    ip_address: "92.10.10.25"
+    mac_address: "AF:04:67:EF:19:DA"
+    port: 8022
+    gateway_port: 8100
+    gateway_ip: "92.10.10.1"
+    server_ip: "195.1.10.10"
