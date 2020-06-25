@@ -1,60 +1,57 @@
 # A simple network simulation
 
-This project was realized for the course *Programmazione di Reti* of the DISI at
-the University of Bologna in the AY 2019/2020.
+Progetto realizzato per l'esame di *Programmazione di Reti*.
 
-The aim is to simulate a small server-router-client architecture on the same 
-node as shown here: 
+L'obiettivo è quello di simulare un'architettura Server-Router-Client come mostrato nella seguente immagine:
 
-![A picture of the network](/resources/server-router-client.png)
+![A picture of the network](resources/server_router_client.png)
 
 ## Features
 
-### Requested Features
+### Feature richieste
 
-- A server must keep track of which clients enter and leave the network.
+- Il server deve tenere traccia dei client che entrano e che escono dalla rete.
 
-- When a client (active on the network) wants to send a message to another 
-client, he will have to send the message to the server which will deliver the 
-message to the recipient only if the recipient client is active, alternatively 
-it will return a message to the sender indicating that the recipient client 
-is not online.
+- Quando un client (attivo in rete) vuole inviare un messaggio ad un altro client, dovrà inviare il messaggio al server il quale consegnerà il messaggio al destinatario solo se il client destinatario è attivo, in alternativa restituirà un messaggio al mittente indicando che il client destinatario non è online.
 
-- The IP and Ethernet headers must be considered in the simplified version, 
-that is, composed only of the IP and Mac Address addresses.
+- Gli headers IP ed Ethernet dovranno essere considerati nella versione semplificata ossia composti dai soli indirizzamenti IP e Mac Address
 
-### Additional features
+### Feature aggiuntive
 
-- Specifications of the entities that made up the network are stored in a 
-configuration file named "network.yml". A different number of 
-clients, routers and servers could be created to simulate the network.
+- Le specifiche riguardanti le entità che formano il network sono memorizzate in un file di configurazione apposito.
 
-- The arp tables are dinamically created by the routers.
+Sono disponibili due versioni del network, "network_basic" è stato impiegato per i test iniziali mentre "network" rappresenta l'architettura richiesta dalla traccia.
 
-## Run the simulation
+In generale a ciascun router può essere legato un numero arbitrario di client.
 
-First see if [requirements](#dependencies) are met.
+- Le arp table dei router non contengono infomazioni relative ai client. Sono state perciò implementati i meccanismi di ARP request e ARP reply per permettere ai router di ricavare informazioni sull'indirizzo mac associato a ciascun client.
 
-Then on GNU/Linux^[1] and MacOS Catalina, chmod and launch on the terminal 
-the script `main.py` with administrator privilegies. 
+## Avviare la simulazione
 
-`sudo ./main.py`
+Per prima cosa si controlli se i requisiti sono rispettati.
 
-On Windows 10 open a terminal and launch the script `main.py`.
+Per lanciare la simulazione bisogna eseguire lo script principale `cli.py` 
 
-`./main.py`
+In ambiente Unix, dopo aver lanciato il comando `chmod`, basta lanciare sul terminale:
 
-## Stop the simulation 
+`sudo ./cli.py`
 
-Just press `CTRL+C` on the terminal in which the main 
-script was launched. This will send a SIGINT to all the members of the network 
-launched by the main script.
+Su Windows si può lanciare impiegando Idle ad esempio.
 
-## Requirements
+## Fermare la simulazione
 
-Python interpreter 3.8.1 64-bit (On Windows)
-Python interpreter 3.8.2 64-bit (On GNU/Linux)
-Conda environment is optional.
-Python 2.x is not supported.
+Basta premere la combinazione di tasti `CTRL+C`, o alternativamente selezionare il comando `Quit` sul terminale.
 
-[1]: tested on Ubuntu 20.04 Focal Fossa and Arch Linux.
+In entrambi i casi sarà lanciata una procedura di pulizia che chiederà a tutti i thread attivi di terminare, con la garanzia che termineranno in breve tempo, e di chiudere le tutte le connessioni aperte.
+
+Talvolta questa procedura potrebbe richiedere qualche secondo.
+
+## Requisiti
+
+Il programma è stato sviluppato con il seguente interprete Python:
+Python interpreter 3.8.2 64-bit
+
+L'unica libreria aggiuntiva richiesta è PyYAML per la lettura del file di configurazione,
+può essere installata con il seguente comando:
+
+`pip install pyyaml`
