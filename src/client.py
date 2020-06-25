@@ -98,7 +98,7 @@ class ClientThread(threading.Thread):
         utils.show_status(self.client_id, msg)
 
         listen_task = threading.Thread(
-            target=self.router_thread.listen_client_connection,
+            target=self.router_thread.listen_connections_client_side,
             daemon=True
         )
         listen_task.start()
@@ -154,7 +154,8 @@ class ClientThread(threading.Thread):
 
         connected = check.socket_connect(
             self.client_connection,
-            router_address
+            router_address,
+            self.client_id
         )
         
         if(connected is True):
@@ -203,6 +204,10 @@ class ClientThread(threading.Thread):
             "{going offline}"
         )
 
+        self.notify_incoming_message()
+        self.sync_event_message.wait() # waiting for router approval
+        self.sync_event_message.clear()
+
         check.socket_send(
             self.client_connection,
             leave_packet,
@@ -224,11 +229,15 @@ class ClientThread(threading.Thread):
 
         if(received_message is not None and len(received_message) > 0):
             parsed_message = utils.read_packet(received_message)
-
+            time.sleep(2) # give time to router to show its status
             msg = " ".join(["message received from:",
                 parsed_message["source_ip"]])
             utils.show_status(self.client_id, msg)
-            utils.report(self.client_id, parsed_message)
+            utils.report(
+                self.client_id,
+                parsed_message,
+                "reading received packet"
+            )
 
             if(parsed_message["destination_mac"] == BROADCAST_MAC):
                 msg = " ".join(["received an ARP request from",

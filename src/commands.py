@@ -8,7 +8,7 @@ import logging
 from threading import Thread
 import utilities as utils
 import data_handling as data
-from server import Server
+from server import ServerThread
 from router import RouterThread
 from client import ClientThread
 
@@ -41,7 +41,6 @@ def launch_router(router_id, entities_threads, network_data):
     clients_data = network_data["clients_data"]
 
     routers_threads = entities_threads["routers_threads"]
-    servers_threads = entities_threads["servers_threads"]
 
     router_ip_server_side = routers_data[router_id]["server_side"]["ip_address"]
     router_ip_client_side = routers_data[router_id]["client_side"]["ip_address"]
@@ -68,15 +67,6 @@ def launch_router(router_id, entities_threads, network_data):
         network_data,
         routing_table
     )
-
-    gateway_ip = router_data["server_side"]["server_ip"]
-
-    for server, server_data in servers_data.items():
-        if(server_data["ip_address"] == gateway_ip):
-            server_id = server
-            break
-
-    server_thread = servers_threads[server_id]
     
     init_params = {
         "router_id" : router_id,
@@ -86,8 +76,6 @@ def launch_router(router_id, entities_threads, network_data):
         "routers_gateway_ip" : routers_gateway_ip,
         "arp_table_mac" : arp_table_mac,
         "routing_table" : routing_table,
-        "server_id" : server_id,
-        "server_thread" : server_thread,
         "sync_event_message" : sync_event_message,
         "sync_event_connection" : sync_event_connection
     }
@@ -119,41 +107,53 @@ of currently active threads.
 
 The server_id and server_thread are given for future reference.
 """
-def launch_server(servers_thread, server_id, server_data, routers_data):
+def launch_server(server_id, entities_threads, network_data):
 
+    # unpack dictionaries
+    servers_data = network_data["servers_data"]
+    routers_data = network_data["routers_data"]
+
+    routers_threads = entities_threads["routers_threads"]
+    servers_threads = entities_threads["servers_threads"]
+
+    server_data = servers_data[server_id]
     default_gateway = server_data["gateway_ip"]
-    ip_address = server_data["ip_address"]
+
     arp_table_mac = data.server_arp_table_generator(
         default_gateway,
         routers_data
     )
 
-    routers_gateway_ip = data.routers_ip_port_generator(
-        routers_data,
-        ip_address
-    )
+    for router, router_data in routers_data.items():
+        if(router_data["server_side"]["ip_address"] == default_gateway):
+            router_id = router
+            break
+
+    router_thread = routers_threads[router_id]
 
     init_params = {
-        "servers_thread" : servers_thread,
+        "servers_threads" : servers_threads,
         "arp_table_mac" : arp_table_mac,
-        "routers_gateway_ip" : routers_gateway_ip,
+        "router_id" : router_id,
+        "router_thread" : router_thread,
         "server_data" : server_data,
         "server_id" : server_id,
-        "sync_event_message" : sync_event_message
     }
 
-    server_thread = Server(
+    server_thread = ServerThread(
         init_params
     )
 
-    servers_thread[server_id] = server_thread
+    servers_threads[server_id] = server_thread
 
-    listen_task = threading.Thread(
+    """listen_task = threading.Thread(
         target=server_thread.run,
         daemon=False
     )
 
-    listen_task.start()
+    listen_task.start()"""
+
+    server_thread.start()
 
 """
 Creating a client bound to the client_data dict passed.
@@ -294,7 +294,7 @@ Ask all currently executing threads to close their connections and waits for
 their effective termination. 
 """
 def close_all_connections(entities_threads):
-
+    utils.show_status("main", "beginning shutdown")
     # unpack dictionary
     servers_threads = entities_threads["servers_threads"]
     routers_threads = entities_threads["routers_threads"]
@@ -307,13 +307,15 @@ def close_all_connections(entities_threads):
     clients_threads_list = list(clients_threads.values())
 
     for server_thread in servers_threads_list:
-        server_thread.stop_listening()
+        server_thread.join()
 
     for router_thread in routers_threads_list:
         router_thread.join()
 
     for client_thread in clients_threads_list:
         client_thread.join()
+
+    utils.show_status("main", "shutdown completed")
 
 # functions used to execute commands
 

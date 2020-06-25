@@ -31,19 +31,17 @@ def config_logger(log_file = ""):
 # message sending
 
 def recv_msg(id, sender_socket, message_handler):
-    while True:
-        received_message = check.socket_recv(sender_socket, id)
+    received_message = check.socket_recv(sender_socket, id)
 
-        if(received_message is not None and len(received_message) > 0):
-            parsed_message = read_packet(received_message)
+    if(received_message is not None and len(received_message) > 0):
+        parsed_message = read_packet(received_message)
 
-            msg = " ".join(["message received from:",
-                    parsed_message["source_ip"]])
-            show_status(id, msg)
-            report(id, parsed_message, "reading packet:")
-            
-            message_handler(parsed_message)
-            break # only listens for the first valid message received
+        msg = " ".join(["message received from:",
+                parsed_message["source_ip"]])
+        show_status(id, msg)
+        report(id, parsed_message, "reading packet:")
+        
+        message_handler(parsed_message)
 
 # packet structure conventions
 
@@ -72,9 +70,8 @@ def rewrite_packet(message_data):
 """
 Write a packet from zero.
 """
-def write_packet(source_ip, destination_ip, source_mac, destination_mac, payload):
-    # ip_header = ""
-    # ethernet_header = ""
+def write_packet(source_ip, destination_ip, source_mac, destination_mac,
+    payload):
     ip_header =  " ".join([source_ip, destination_ip])
     ethernet_header =  " ".join([source_mac, destination_mac])
     packet = " ".join([ip_header, ethernet_header, payload])
@@ -88,10 +85,10 @@ def read_packet(received_message):
     rcv_msg = received_message.split(" ", 4)
     if len(rcv_msg) > 4: 
         parsed_message = {
-            "source_mac" : rcv_msg[0],
-            "destination_mac" : rcv_msg[1],
-            "source_ip" : rcv_msg[2],
-            "destination_ip" : rcv_msg[3],
+            "source_ip" : rcv_msg[0],
+            "destination_ip" : rcv_msg[1],
+            "source_mac" : rcv_msg[2],
+            "destination_mac" : rcv_msg[3],
             "message" : rcv_msg[4]
         }
         return parsed_message

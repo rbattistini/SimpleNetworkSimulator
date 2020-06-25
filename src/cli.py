@@ -39,13 +39,14 @@ def init():
         "clients_threads" : clients_threads
     }
 
-    # launch server
-    for server_id, server_data in servers_data.items():
-        cmd.launch_server(servers_thread, server_id, server_data, routers_data)
-
     # launch routers
     for router_id, router_data in routers_data.items():
         cmd.launch_router(router_id, entities_threads, network_data)
+        # break
+
+    # launch server  
+    for server_id, server_data in servers_data.items():
+        cmd.launch_server(server_id, entities_threads, network_data)
 
     return network_data, entities_threads, client_ids
 

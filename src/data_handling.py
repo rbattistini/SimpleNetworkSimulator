@@ -8,7 +8,7 @@ default_error_message = "\nFile loading failed:"
 def load_network():
     network_data = {}
     try:
-        with open('../resources/network.yml', "r") as file:
+        with open('../resources/network_basic.yml', "r") as file:
             # logging.info("file loaded successfully")
             cfg = yaml.safe_load(file)
             servers_data = cfg["servers"]
@@ -168,16 +168,16 @@ def ask_routing_table(router_id, network_data, routing_table):
     return routing_table
                 
 pp = pprint.PrettyPrinter(indent=4)
-"""routing_table = {}
+routing_table = {}
 network_data = load_network()
-# pp.pprint(ask_routing_table("router1", network_data, routing_table))
+pp.pprint(ask_routing_table("router1", network_data, routing_table))
 # pp.pprint(network_data)
 routers_data = network_data["routers_data"]
 router_data = routers_data["router1"]
 clients_data = network_data["clients_data"]
 
 server_data = network_data["servers_data"]
-server_ip = router_data["server_side"]["server_ip"]"""
+server_ip = router_data["server_side"]["server_ip"]
 """string = " ".join(["ciao", "come", "va?"])
 list = string.split()
 pp.pprint(list)"""
@@ -189,3 +189,20 @@ pp.pprint(list)"""
 # pp.pprint(load_client_ids(clients_data))
 # pp.pprint(routers_ip_port_generator(routers_data, "195.1.10.1"))
 # pp.pprint(routers_list_generator(routers_data, "195.1.10.1"))
+
+"""
+Router1
+routing_table = {
+    "1.5.10.15"" : "195.1.10.2",
+    "1.5.10.20"" : "195.1.10.2",
+    "1.5.10.25"" : "195.1.10.2"
+}
+Router2
+routing_table = {
+    "92.10.10.15" : "195.1.10.1",
+    "92.10.10.20" : "195.1.10.1",
+    "92.10.10.25" : "195.1.10.1",
+    "195.1.10.10" : "195.1.10.1"
+}
+
+"""

@@ -6,6 +6,7 @@ can be printed if specified.
 """
 import socket
 import logging
+import commands as cmd
 import utilities as utils
 
 default_error_message = "\n Socket error occurred:"
@@ -41,6 +42,7 @@ def socket_connect(connection, address, id, additional_error_message = ""):
         msg = default_error_message + str(msg) + "\n" + additional_error_message
         msg = " ".join(["[" + id + "]:", msg])
         logging.error(msg)
+        cmd.clean_quit()
         # print(default_error_message, msg)
         # print(additional_error_message)
         return False
@@ -73,6 +75,7 @@ def socket_recv(connection, id, additional_error_message = "",
         logging.error(msg)
         # print(default_error_message, msg)
         # print(additional_error_message)
+        cmd.clean_quit()
         return None
     return received_message
 

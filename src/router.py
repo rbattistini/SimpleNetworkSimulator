@@ -23,8 +23,6 @@ class RouterThread(threading.Thread):
         self.connected_to_server = False
 
         self.router_threads = init_params["routers_threads"]
-        self.server_id = init_params["server_id"]
-        self.server_thread = init_params["server_thread"]
         self.clients_gateway_ip = init_params["clients_gateway_ip"]
         self.routers_gateway_ip = init_params["routers_gateway_ip"]
         self.arp_table_mac = init_params["arp_table_mac"]
@@ -55,31 +53,273 @@ class RouterThread(threading.Thread):
     """
     def run(self):
 
+        utils.show_status(self.getName(), "starting")
         connected = self.go_online()
-        if(connected is True):
-            while not self.stop_event.isSet():
-                self.listen_server_side()
+        if(self.connected_to_server is False):
+            if(connected is True):
+                utils.show_status(self.router_id, "listening for packets")
+            
+                while not self.stop_event.isSet():
+                    self.listen_server_aux_router()
 
-            utils.show_status(self.router_id, "closing connections")
-            # self.socket_server_side.shutdown(0)
-            self.socket_server_side.close()
-            # self.socket_client_side.shutdown(0)
-            self.socket_client_side.close()
+                utils.show_status(self.router_id, "closing connections")
+                # self.socket_server_side.shutdown(0)
+                self.socket_server_side.close()
+                # self.socket_client_side.shutdown(0)
+                self.socket_client_side.close()
 
-        # exit procedure
-        self.stop_event.clear()
-        utils.show_status(self.router_id, "going offline")
-        del self.router_threads[self.router_id]
-    
+            # exit procedure
+            self.stop_event.clear()
+            utils.show_status(self.router_id, "going offline")
+            del self.router_threads[self.router_id]
+        elif(connected is True):
+            utils.show_status(self.router_id, "listening for packets")
+        else:
+            self.join()
+        
     """
     Tells the router to exit from its main loop.
 
     It goes offline thus closing its connection to the network.
     """
     def join(self, timeout=None):
-        self.stop_event.set()
-        threading.Thread.join(self, timeout)
+        if(self.connected_to_server is True):
+            utils.show_status(self.router_id, "going offline")
+            self.socket_server_side.close()
+            self.socket_client_side.close()
+            self.stop_event.clear()
+            del self.router_threads[self.router_id]
+        else:
+            self.stop_event.set()
+            threading.Thread.join(self, timeout)
     
+    def send_message(self, parsed_message, destination_socket, destination_ip):
+        packet = utils.rewrite_packet(
+            parsed_message    
+        )
+
+        utils.report(
+            self.router_id,
+            parsed_message,
+            "preparing to forward the following packet:"
+        )
+        
+        check.socket_send(
+            destination_socket,
+            packet,
+            "packet to the client could not be sent"
+        )
+
+        msg = " ".join(["message sent to", destination_ip])
+        utils.show_status(self.router_id, msg)
+    
+    # TODO arp_table_mac has all of it?
+    def forward_message(self, parsed_message, new_source_mac, destination_ip):
+
+        if(destination_ip not in self.routing_table):
+            destination_socket = self.arp_table_socket[destination_ip]
+        else:
+            destination_socket = self.routing_table[destination_ip]
+            
+        new_destination_mac = self.arp_table_mac[destination_ip]
+
+        parsed_message.update(
+            source_mac=new_source_mac,
+            destination_mac=new_destination_mac
+        )
+
+        self.send_message(parsed_message, destination_socket, destination_ip)
+
+    def send_arp_request(self, parsed_message, new_source_mac, destination_ip):
+        self.waiting_arp_request = True
+        self.packets_queue.append(parsed_message)
+        destination_socket = self.arp_table_socket[destination_ip]
+
+        new_message = {
+            "source_ip" : self.router_data["client_side"]["ip_address"],
+            "destination_ip" : destination_ip,
+            "source_mac" : new_source_mac,
+            "destination_mac" : BROADCAST_MAC,
+            "message" : "{ARP request}"
+        }
+
+        self.send_message(new_message, destination_socket, destination_ip)
+
+    def forward_to_client(self, parsed_message):
+        destination_ip = parsed_message["destination_ip"]
+        new_source_mac = self.router_data["client_side"]["mac_address"]
+
+        if(destination_ip not in self.arp_table_mac 
+                and self.waiting_arp_request is False):
+            utils.show_status(self.router_id, "sending ARP request")
+            self.send_arp_request(parsed_message, new_source_mac, destination_ip)
+        else:
+            utils.show_status(
+                self.router_id,
+                "forwading packet to recipient client"
+            )
+            self.forward_message(parsed_message, new_source_mac, destination_ip)
+        
+    def forward_to_server(self, parsed_message):
+        destination_ip = self.server_ip
+        new_source_mac = self.router_data["server_side"]["mac_address"]
+        self.forward_message(parsed_message, new_source_mac, destination_ip)
+    
+    def forward_to_aux_router(self, parsed_message):
+        destination_ip = parsed_message["destination_ip"]
+        new_source_mac = self.router_data["server_side"]["mac_address"]
+        self.forward_message(parsed_message, new_source_mac, destination_ip)
+    
+    def forward_to_main_router(self, parsed_message):
+        new_source_mac = self.router_data["server_side"]["mac_address"]
+        destination_ip = parsed_message["destination_ip"]
+        new_destination_mac = self.arp_table_mac[destination_ip]
+        destination_socket = self.socket_server_side
+
+        parsed_message.update(
+            source_mac=new_source_mac,
+            destination_mac=new_destination_mac
+        )
+
+        self.send_message(parsed_message, destination_socket, destination_ip)
+
+    def handle_message_main_router(self, parsed_message):
+        destination_ip = parsed_message["destination_ip"]
+        source_mac = parsed_message["source_mac"]
+
+        for ip_address, mac_address in self.arp_table_mac.items():
+            if(mac_address == source_mac):
+                sender_ip_address = ip_address
+
+        if(sender_ip_address == self.server_ip):
+            if(destination_ip in self.arp_table_socket):
+                self.forward_to_client(parsed_message)
+            else:
+                self.forward_to_aux_router(parsed_message)
+        else:
+            self.forward_to_server(parsed_message)
+
+    # TODO: if there are more than two routers?
+    def handle_message_aux_router(self, parsed_message):
+        self.forward_to_client(parsed_message)
+
+    """
+    States whether a message received from the server should be sent to another 
+    router or forwarded to one of the clients in its network.
+
+    In the latter case states also if an ARP request should be made.
+
+    If a message is received from a router then it is forwaded to the server.
+    """
+    def handle_message_server_side(self, parsed_message):
+
+        utils.show_status(
+            self.router_id,
+            "deciding where the message should go..."
+        )
+
+        if(self.connected_to_server is True):
+            self.handle_message_main_router(parsed_message)
+        else:
+            self.handle_message_aux_router(parsed_message)
+
+    """
+    States whether a message received from a client should be forwaded to the
+    server or another router or treated as an ARP reply.
+    """
+    def handle_message_client_side(self, parsed_message):
+        client_ip = parsed_message.get("source_ip")
+        client_mac = parsed_message["source_mac"]
+
+        if(self.waiting_arp_request is True):
+            self.arp_table_mac[client_ip] = client_mac
+            self.waiting_arp_request = False
+            message_to_send = self.packets_queue.pop()
+            self.handle_message_server_side(message_to_send)
+        elif(self.connected_to_server is True):
+            self.forward_to_server(parsed_message)
+        else:
+            self.forward_to_main_router(parsed_message)
+        
+        time.sleep(2)
+
+    """
+    Listens for packets received from a client.
+
+    Two possible cases:
+    - ARP reply, update arp_table_mac and send last packet stored
+    - forward message to the server
+    """
+    def listen_client_side(self, ip_address):      
+        utils.show_status(
+            self.router_id,
+            "releasing lock, client can send the message"
+        )
+
+        self.sync_event_message.set()
+
+        sender_socket = self.arp_table_socket[ip_address]
+        self.listen_on_demand(sender_socket, self.handle_message_client_side)
+
+    def listen_server_side_main_router(self, ip_address):
+        sender_socket = self.arp_table_socket[ip_address]
+        self.listen_on_demand(sender_socket, self.handle_message_server_side)
+    
+    def listen_on_demand(self, sender_socket, handler):
+        utils.recv_msg(
+            self.router_id,
+            sender_socket,
+            handler
+        )
+        utils.show_status(self.router_id, "packet received successfully")
+
+    """
+    Always called by an auxiliary router.
+
+    Tells the main router to start listening for a message from this router.
+    """
+    def notify_incoming_connection(self):
+        utils.show_status(
+            self.client_id,
+            "notifying an incoming connection from this router"
+        )
+        
+        my_ip_address = self.router_data["server_side"]["ip_address"]
+        listen_task = threading.Thread(
+            target=self.router_thread.listen_server_side_main_router,
+            args=[my_ip_address],
+            daemon=True
+        )
+        listen_task.start()
+
+    """
+    Listens for packets received from another router.
+    
+    Two possible cases:
+    - the packet is forwarded to one of the clients connected to this router
+    - the packet is forwarded to another router
+    """
+    def listen_server_side_aux_router(self):
+
+        received_message = check.socket_recv(
+            self.socket_server_side,
+            self.router_id
+        )
+
+        if(received_message is not None and len(received_message) > 0):
+
+            parsed_message = utils.read_packet(received_message)
+
+            msg = " ".join(["message received from:", self.server_ip])
+            utils.show_status(self.router_id, msg)
+            utils.report(
+                self.router_id,
+                parsed_message,
+                "reading packet received"
+            )
+
+            self.handle_message_server_side(parsed_message)
+
     """
     Called by a client that wants to connect.
     
@@ -88,7 +328,7 @@ class RouterThread(threading.Thread):
 
     Returns true if a connection was recognized, false otherwise.
     """
-    def listen_client_connection(self):
+    def listen_connections_client_side(self):
 
         utils.show_status(
             self.router_id,
@@ -108,229 +348,17 @@ class RouterThread(threading.Thread):
                     self.arp_table_socket[ip_address] = client_connection
                     msg = " ".join(["connected with client", str(ip_address)])
                     utils.show_status(self.router_id, msg)
+                    utils.show_status(self.router_id, str(self.arp_table_socket))
                     self.sync_event_connection.set() # waiting for router approval
                     break # only the first valid connection is accepted
-
-    """
-    States whether a message received from the server should be sent to another 
-    router or forwarded to one of the clients in its network.
-
-    In the latter case states also if an ARP request should be made.
-    """
-    # TODO: finish here
-    def handle_message_server_side(self, parsed_message):
-
-        destination_ip = parsed_message["destination_ip"]
-        utils.show_status(
-            self.router_id,
-            "deciding where the message should go..."
-        )
-
-        if(destination_ip not in self.routing_table):
-
-            if(destination_ip not in self.arp_table_mac 
-            and self.waiting_arp_request is False):
-
-                utils.show_status(self.router_id, "sending ARP request")
-                self.waiting_arp_request = True
-                self.packets_queue.append(parsed_message)
-            
-                packet = utils.write_packet(
-                    self.router_data["client_side"]["ip_address"],
-                    destination_ip,
-                    self.router_data["client_side"]["mac_address"],
-                    BROADCAST_MAC,
-                    "{ARP request}"
-                )
-
-                destination_socket = self.arp_table_socket[destination_ip]
-
-                check.socket_send(
-                    destination_socket,
-                    packet,
-                    self.router_id,
-                    "Packet could not be sent"
-                )
-
-                return
-
-            else:
-                utils.show_status(
-                    self.router_id,
-                    "forwading packet to recipient client"
-                )
-                new_destination_mac = self.arp_table_mac[destination_ip]
-                destination_socket = self.arp_table_socket[destination_ip]
-
-        else:
-            utils.show_status(
-                self.router_id,
-                "forwading packet to another router"
-            )
-            new_destination_mac = self.arp_table_mac[       
-                    self.routing_table[destination_ip]
-                ]
-        
-            destination_socket = self.arp_table_socket[       
-                self.routing_table[destination_ip]
-            ]
-
-        new_source_mac = self.router_data["client_side"]["mac_address"]
-
-        parsed_message.update(
-                source_mac=new_source_mac,
-                destination_mac=new_destination_mac
-        )
-
-        packet = utils.rewrite_packet(
-            parsed_message    
-        )
-
-        # if(destination_socket is not None).
-        check.socket_send( # WARNING
-            destination_socket,
-            packet,
-            "Packet could not be sent"
-        )
-        time.sleep(2)
-    
-    def forward_to_server(self, parsed_message):
-        destination_ip = self.server_ip
-        new_source_mac = self.router_data["server_side"]["mac_address"]
-        new_destination_mac = self.arp_table_mac[destination_ip]
-        destination_socket = self.arp_table_socket[destination_ip]
-
-        parsed_message.update(
-            source_mac=new_source_mac,
-            destination_mac=new_destination_mac
-        )
-
-        packet = utils.rewrite_packet(
-            parsed_message    
-        )
-
-        utils.report(
-            self.router_id,
-            parsed_message,
-            "preparing to forward the following packet:"
-        )
-        
-        check.socket_send(
-            destination_socket,
-            packet,
-            "packet to the server could not be sent"
-        )
-
-        msg = " ".join(["message sent to", destination_ip])
-        utils.show_status(self.router_id, msg)
-    
-    # TODO: how to find destination socket here?
-    def forward_to_router(self, parsed_message):
-        destination_ip = self.server_ip # routing table?
-        new_source_mac = self.router_data["server_side"]["mac_address"]
-        new_destination_mac = self.arp_table_mac[destination_ip]
-        destination_socket = self.arp_table_socket[destination_ip]
-
-        parsed_message.update(
-            source_mac=new_source_mac,
-            destination_mac=new_destination_mac
-        )
-
-        packet = utils.rewrite_packet(
-            parsed_message    
-        )
-
-        utils.report(
-            self.router_id,
-            parsed_message,
-            "preparing to forward the following packet:"
-        )
-        
-        check.socket_send(
-            destination_socket,
-            packet,
-            "packet to the router could not be sent"
-        )
-
-        msg = " ".join(["message sent to", destination_ip])
-        utils.show_status(self.router_id, msg)
-
-    """
-    States whether a message received from a client should be forwaded to the
-    server or another router or treated as an ARP reply.
-    """
-    def handle_message_client_side(self, parsed_message):
-        if(self.waiting_arp_request is True):
-            self.arp_table_mac[
-                parsed_message.get("source_ip")
-            ] = parsed_message["source_mac"]
-            self.waiting_arp_request = False
-            packet_to_send = self.packets_queue.pop()
-            self.handle_message_server_side(packet_to_send)
-        elif(self.connected_to_server is True):
-            self.forward_to_server(parsed_message)
-        else:
-            self.forward_to_router(parsed_message)
-            time.sleep(2)
-
-    """
-    Listens for packets received from a client.
-
-    Two possible cases:
-    - ARP reply, update arp_table_mac and send last packet stored
-    - forward message to the server
-    """
-    def listen_client_side(self, ip_address):
-            
-        utils.show_status(
-            self.router_id,
-            "releasing lock, client can send the message"
-        )
-
-        self.sync_event_message.set()
-
-        sender_socket = self.arp_table_socket[ip_address]
-        utils.recv_msg(
-            self.router_id,
-            sender_socket,
-            self.handle_message_client_side
-        )
-        utils.show_status(self.router_id, "packet received successfully")
-
-    """
-    Listens for packets received from the server.
-    
-    Two possible cases:
-    - the packet is forwarded to one of the clients connected to this router
-    - the packet is forwarded to another router
-    """
-    def listen_server_side(self):
-        received_message = check.socket_recv(
-            self.socket_server_side,
-            self.router_id
-        )
-
-        if(received_message is not None and len(received_message) > 0):
-            parsed_message = utils.read_packet(received_message)
-
-            msg = " ".join(["message received from:", self.server_ip])
-            utils.show_status(self.router_id, msg)
-            utils.report(
-                self.router_id,
-                parsed_message,
-                "reading packet received from the server"
-            )
-
-            self.handle_message_server_side(parsed_message)
-            time.sleep(2)
 
     """
     This router waits for a connection with a server or another router. 
     As soon as a connection is established the router updates accordingly its
     arp table socket.
     """
-    def listen_connections(self):
-
+    def listen_connections_server_side(self):
+        connected = False
         network_connection, address = check.socket_accept(
             self.socket_server_side,
             "Connection could not be established"
@@ -339,6 +367,7 @@ class RouterThread(threading.Thread):
         if(network_connection != None and
             network_connection not in self.arp_table_socket):
             
+            connected = True
             if(address[1] in self.routers_gateway_ip):
                 ip_address = self.routers_gateway_ip[address[1]]
                 msg = " ".join(["connected with router:", ip_address])
@@ -348,28 +377,36 @@ class RouterThread(threading.Thread):
                 utils.show_status(self.router_id, msg)
                 ip_address = self.server_ip
             self.arp_table_socket[ip_address] = network_connection
+        
+        return connected
 
     def accept_connections(self):
         connections = len(self.routers_gateway_ip) + 1
 
         while connections > 0:
-            self.listen_connections()
+            connected_to_all = self.listen_connections_server_side()
             connections -= 1
 
         utils.show_status(self.router_id, "all connections established")
+        return connected_to_all
    
     def connect_with_routers(self, network_connections):
+        connected_to_all = True
         for ip_address, port in network_connections.items():
                 connected = check.socket_connect(
                     self.socket_server_side,
-                    ("localhost", port)
+                    ("localhost", port),
+                    self.router_id
                 )
                 if(connected is True):
                     msg = " ".join(["connected with router:", ip_address])
                     utils.show_status(self.router_id, msg)
+                else:
+                    connected_to_all = False
 
         utils.show_status(self.router_id, "all connections established")
-    
+        return connected_to_all
+
     """
     A router connects with other routers or the server.
     
@@ -382,11 +419,12 @@ class RouterThread(threading.Thread):
 
         if(self.server_ip in network_connections): 
             self.connected_to_server = True
-            self.accept_connections() 
+            connected = self.accept_connections() 
         else:   # connect with routers in network_connections
-            self.connect_with_routers(network_connections)
+            connected = self.connect_with_routers(network_connections)
             
         utils.show_status(self.router_id, "connected to the network")
+        return connected
 
     """
     Creates two sockets, one for handling clients and the other for

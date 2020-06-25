@@ -15,12 +15,12 @@ class ServerThread(threading.Thread):
         self.stop_event = threading.Event()
         self.connected = False
 
-        self.server_thread = init_params["servers_thread"]
+        self.servers_threads = init_params["servers_threads"]
         self.arp_table_mac = init_params["arp_table_mac"]
-        # self.routers_gateway_ip = init_params["routers_gateway_ip"]
         self.server_data = init_params["server_data"]
         self.server_id = init_params["server_id"]
-        # self.sync_event_message = init_params["sync_event_message"]
+        self.router_id = init_params["router_id"]
+        self.router_thread = init_params["router_thread"]
 
         self.online_clients = {} # IP address - boolean
 
@@ -29,10 +29,9 @@ class ServerThread(threading.Thread):
         self.server_connection = check.socket_create(
             address,
             backlog = 0,
-            timeout = 0,
+            timeout = 5,
             reuse_address = True
         )
-        # self.server_connection.settimeout(5)
 
         threading.Thread.__init__(self, name=self.server_id)
 
@@ -51,9 +50,10 @@ class ServerThread(threading.Thread):
                 self.listen_packets()
         
         # exit procedure
+        utils.show_status(self.server_id,"closing connection")
         self.server_connection.close()
         utils.show_status(self.server_id,"going offline")
-        del self.server_thread[self.server_id]
+        del self.servers_threads[self.server_id]
 
     """
     Tells the server to exit from its main loop.
@@ -81,12 +81,30 @@ class ServerThread(threading.Thread):
         return client_ip not in self.online_clients \
         or self.online_clients[client_ip] is False
 
+    """
+    Notifies the router connected to this server on an incoming message.
+    """
+    def notify_incoming_connection(self):
+        msg = " ".join(["notifying",self.router_id, \
+         "of an incoming connection"])
+        utils.show_status(self.server_id, msg)
+        
+        my_ip_address = self.server_data["ip_address"]
+        listen_task = threading.Thread(
+            target=self.router_thread.listen_server_side_main_router,
+            args=[my_ip_address],
+            daemon=True
+        )
+        listen_task.start()
+        
     def send_message(self, parsed_message):
         destination_ip = self.server_data["gateway_ip"]
         packet = utils.rewrite_packet(parsed_message)
 
         msg = " ".join(["Sending message to:", destination_ip])
         utils.show_status(self.server_id, msg)
+
+        self.notify_incoming_connection() # alert main router
 
         check.socket_send(
             self.server_connection,
@@ -99,9 +117,11 @@ class ServerThread(threading.Thread):
             "is not online: resending message back", str(parsed_message)])
         utils.show_status(self.server_id, msg)
 
+        sender_ip_address = parsed_message["source_ip"]
         parsed_message.update(
-            source_ip=self.server_data.get("server_ip"),
-            source_mac=self.server_data.get("server_mac"),
+            source_ip=self.server_data.get("ip_address"),
+            source_mac=self.server_data.get("mac_address"),
+            destination_ip=sender_ip_address,
             destination_mac=self.arp_table_mac[
                 self.server_data["gateway_ip"]
             ],
@@ -162,14 +182,11 @@ class ServerThread(threading.Thread):
     client because it is online
     """
     def listen_packets(self):   
-
         utils.recv_msg(
             self.server_id,
             self.server_connection,
             self.handle_message
         )
-
-        utils.show_status(self.server_id, "packet received successfully")
 
     """
     Connects to its default gateway.
@@ -184,7 +201,8 @@ class ServerThread(threading.Thread):
 
         connected = check.socket_connect(
             self.server_connection,
-            router_address
+            router_address,
+            self.server_id
         )
         
         if(connected is True):
