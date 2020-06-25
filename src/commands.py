@@ -89,13 +89,6 @@ def launch_router(router_id, entities_threads, network_data):
 
     router_thread.start()
 
-"""    listen_clients_connections_task = threading.Thread(
-        target=router_thread.listen_client_connection,
-        daemon=True
-    )
-
-    listen_clients_connections_task.start()"""
-
 
 """
 Creating a server bound to the server_data dict passed.
@@ -148,13 +141,6 @@ def launch_server(server_id, entities_threads, network_data):
 
     servers_threads[server_id] = server_thread
 
-    """listen_task = threading.Thread(
-        target=server_thread.run,
-        daemon=False
-    )
-
-    listen_task.start()"""
-
     server_thread.start()
 
 """
@@ -168,7 +154,8 @@ of currently active threads.
 
 The client_id and clients_threads are given for future reference.
 """
-def launch_client(clients_threads, client_id, client_data, routers_data, routers_threads):
+def launch_client(clients_threads, client_id, client_data, routers_data, 
+routers_threads):
     
     arp_table_mac = data.client_arp_table_generator(
         client_data["gateway_ip"],
@@ -333,7 +320,8 @@ def close_all_connections(entities_threads):
 
 # functions used to execute commands
 
-def client_go_online(client_ids, clients_threads, clients_data, routers_data, routers_threads):
+def client_go_online(client_ids, clients_threads, clients_data, routers_data, 
+routers_threads):
     print(client_id_request + " that will go online:\n")
     show_address_book(client_ids, clients_data, clients_threads)
     client_id = utils.retrieve_id(utils.not_in_dict, clients_threads, client_ids)
@@ -369,7 +357,6 @@ def send_message_routine(client_ids, clients_threads, clients_data):
 Called by the cli or the signal handler, used to show the exit screen.
 """
 def clean_quit(entities_threads):
-    # utils.clear()
     print("Exiting from the simulation...")
     close_all_connections(entities_threads)
     os._exit(0)
