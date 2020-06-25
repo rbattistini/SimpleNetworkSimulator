@@ -376,7 +376,8 @@ def clean_quit(entities_threads):
 
 def show_help():
     utils.print_separator()
-    utils.load_text("help.txt")
+    data.load_text("../resources/help.txt")
+    input("Press any key to return to the commands' list ")
 
 class MyHandler:
     def __init__(self, entities_threads):

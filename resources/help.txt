@@ -1,0 +1,40 @@
+Make a client connect
+
+The client sends a packet to the server stating 
+that it is going online.
+
+The packet contains as payload this: {going online}
+
+**************************************************
+
+Make a client disconnect
+
+The client sends a packet to the server stating 
+that it is going offline.
+
+The packet contains as payload this: {going offline}
+
+**************************************************
+
+Send a message
+
+After giving the identifier of the sender and of 
+the recipient tells the sender 
+to write a packet with the message given and to 
+send it to its default gateway. 
+
+Then the packet is forwaded to the server.
+
+If the server sees the recipient client is online 
+(checks its dictionary of 
+online clients) then the message is sent to its 
+default gateway.
+
+The main router then checks if the packet should
+ be forwaded to another router 
+(checks its routing table) or to one of its 
+clients.
+
+If the packet is forwaded to the other router 
+then it has reached its recipient client and 
+the chain ends.
