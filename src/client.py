@@ -57,10 +57,12 @@ class ClientThread(threading.Thread):
             utils.show_status(self.client_id, "listening for incoming packets")
             while not self.stop_event.isSet():
                 self.listen_packets()
-
-            self.go_offline()
         
         # exit procedure
+        utils.show_status(self.client_id, "going offline")
+        utils.show_status(self.client_id, "closing connection")
+        self.client_connection.close()
+
         self.stop_event.clear()
         del self.clients_threads[self.client_id]
         
@@ -123,10 +125,11 @@ class ClientThread(threading.Thread):
             "waiting for router listening messages"
         )
         self.notify_incoming_message()
-        self.sync_event_message.wait()   # waiting for router approval
+        # waiting for router approving message sending
+        self.sync_event_message.wait()
 
         sent = check.socket_send(self.client_connection, packet, self.router_id)
-        if(sent is True): # WARNING
+        if(sent is True):
             msg = " ".join(["message sent to", gateway_ip])
             utils.show_status(self.client_id, msg)
         
@@ -149,7 +152,8 @@ class ClientThread(threading.Thread):
         gateway_ip = self.client_data["gateway_ip"]
 
         self.notify_incoming_connection()
-        self.sync_event_connection.wait() # waiting for router approval
+        # waiting for router approving connection
+        self.sync_event_connection.wait() 
         self.sync_event_connection.clear() # ready for reuse
 
         connected = check.socket_connect(
@@ -160,7 +164,9 @@ class ClientThread(threading.Thread):
         
         if(connected is True):
             utils.show_status(self.client_id, "going online")
-            self.sync_event_connection.wait() # waiting for router approval
+            # waiting for router completing connection procedure
+            self.sync_event_connection.wait() 
+            self.sync_event_connection.clear() # ready for reuse
 
             greeting_packet = utils.write_packet(
                 self.client_data.get("ip_address"),
@@ -175,7 +181,8 @@ class ClientThread(threading.Thread):
                 "waiting for router accepting message"
             )
             self.notify_incoming_message()
-            self.sync_event_message.wait() # waiting for router approval
+            # waiting for router approving message sending
+            self.sync_event_message.wait() 
             self.sync_event_message.clear()
 
             check.socket_send(
@@ -189,6 +196,8 @@ class ClientThread(threading.Thread):
 
     """
     Sends a special packet to notify the server it is currently offline.
+
+    Then closes its connection to the network.
     """ 
     def go_offline(self):
 
@@ -205,7 +214,7 @@ class ClientThread(threading.Thread):
         )
 
         self.notify_incoming_message()
-        self.sync_event_message.wait() # waiting for router approval
+        self.sync_event_message.wait() # wait for router approval
         self.sync_event_message.clear()
 
         check.socket_send(
@@ -215,8 +224,7 @@ class ClientThread(threading.Thread):
             "Leave packet could not be sent"
         )
 
-        utils.show_status(self.client_id, "closing connection")
-        self.client_connection.close()
+        self.join()
 
     """
     Listens for packets from the server.

@@ -22,7 +22,7 @@ class RouterThread(threading.Thread):
         self.waiting_arp_request = False
         self.connected_to_server = False
 
-        self.router_threads = init_params["routers_threads"]
+        self.routers_threads = init_params["routers_threads"]
         self.clients_gateway_ip = init_params["clients_gateway_ip"]
         self.routers_gateway_ip = init_params["routers_gateway_ip"]
         self.arp_table_mac = init_params["arp_table_mac"]
@@ -36,9 +36,12 @@ class RouterThread(threading.Thread):
 
         max_conn_clients = min(len(self.clients_gateway_ip), 2)
         max_conn_clients = max(max_conn_clients, 5)
-        max_conn_routers = min(len(self.routers_gateway_ip), 2)
-        max_conn_routers = max(max_conn_routers, 5)
-
+        self.network_connections = self.router_data["network_connections"]
+        if(self.server_ip in self.network_connections):
+            max_conn_routers = min(len(self.routers_gateway_ip), 2)
+            max_conn_routers = max(max_conn_routers, 5)
+        else:
+            max_conn_routers = 0
         self.init(max_conn_clients, max_conn_routers)
 
         self.packets_queue = []
@@ -60,7 +63,7 @@ class RouterThread(threading.Thread):
                 utils.show_status(self.router_id, "listening for packets")
             
                 while not self.stop_event.isSet():
-                    self.listen_server_aux_router()
+                    self.listen_server_side_aux_router()
 
                 utils.show_status(self.router_id, "closing connections")
                 # self.socket_server_side.shutdown(0)
@@ -71,7 +74,7 @@ class RouterThread(threading.Thread):
             # exit procedure
             self.stop_event.clear()
             utils.show_status(self.router_id, "going offline")
-            del self.router_threads[self.router_id]
+            del self.routers_threads[self.router_id]
         elif(connected is True):
             utils.show_status(self.router_id, "listening for packets")
         else:
@@ -88,7 +91,7 @@ class RouterThread(threading.Thread):
             self.socket_server_side.close()
             self.socket_client_side.close()
             self.stop_event.clear()
-            del self.router_threads[self.router_id]
+            del self.routers_threads[self.router_id]
         else:
             self.stop_event.set()
             threading.Thread.join(self, timeout)
@@ -107,21 +110,20 @@ class RouterThread(threading.Thread):
         check.socket_send(
             destination_socket,
             packet,
+            self.router_id,
             "packet to the client could not be sent"
         )
 
         msg = " ".join(["message sent to", destination_ip])
         utils.show_status(self.router_id, msg)
     
-    # TODO arp_table_mac has all of it?
-    def forward_message(self, parsed_message, new_source_mac, destination_ip):
+    def forward_message(self, parsed_message, new_source_mac, destination_ip, 
+    new_destination_mac):
 
         if(destination_ip not in self.routing_table):
             destination_socket = self.arp_table_socket[destination_ip]
         else:
             destination_socket = self.routing_table[destination_ip]
-            
-        new_destination_mac = self.arp_table_mac[destination_ip]
 
         parsed_message.update(
             source_mac=new_source_mac,
@@ -157,29 +159,62 @@ class RouterThread(threading.Thread):
             utils.show_status(
                 self.router_id,
                 "forwading packet to recipient client"
+            )                    
+            new_destination_mac = self.arp_table_mac[destination_ip]
+            self.forward_message(
+                parsed_message, 
+                new_source_mac, 
+                destination_ip, 
+                new_destination_mac
             )
-            self.forward_message(parsed_message, new_source_mac, destination_ip)
         
     def forward_to_server(self, parsed_message):
         destination_ip = self.server_ip
         new_source_mac = self.router_data["server_side"]["mac_address"]
-        self.forward_message(parsed_message, new_source_mac, destination_ip)
+        new_destination_mac = self.arp_table_mac[destination_ip]
+
+        self.forward_message(
+            parsed_message, 
+            new_source_mac, 
+            destination_ip,
+            new_destination_mac
+        )
     
     def forward_to_aux_router(self, parsed_message):
         destination_ip = parsed_message["destination_ip"]
         new_source_mac = self.router_data["server_side"]["mac_address"]
-        self.forward_message(parsed_message, new_source_mac, destination_ip)
+        recipient_router_ip = self.routing_table[destination_ip]
+        new_destination_mac = self.arp_table_mac[recipient_router_ip]
+        self.forward_message(
+            parsed_message, 
+            new_source_mac, 
+            recipient_router_ip,
+            new_destination_mac
+        )
     
     def forward_to_main_router(self, parsed_message):
         new_source_mac = self.router_data["server_side"]["mac_address"]
         destination_ip = parsed_message["destination_ip"]
-        new_destination_mac = self.arp_table_mac[destination_ip]
+
+        # find the router to which this one is connected
+        for ip_address in self.network_connections:
+            self.main_router_ip_address = ip_address
+            break
+
+
+        new_destination_mac = self.arp_table_mac[self.main_router_ip_address]
         destination_socket = self.socket_server_side
 
         parsed_message.update(
             source_mac=new_source_mac,
             destination_mac=new_destination_mac
         )
+        
+        utils.show_status(
+            self.router_id,
+            "notifying main router of incoming message"
+        )
+        self.notify_incoming_message()
 
         self.send_message(parsed_message, destination_socket, destination_ip)
 
@@ -199,7 +234,6 @@ class RouterThread(threading.Thread):
         else:
             self.forward_to_server(parsed_message)
 
-    # TODO: if there are more than two routers?
     def handle_message_aux_router(self, parsed_message):
         self.forward_to_client(parsed_message)
 
@@ -239,6 +273,7 @@ class RouterThread(threading.Thread):
         elif(self.connected_to_server is True):
             self.forward_to_server(parsed_message)
         else:
+            utils.show_status(self.router_id, "forwading to main router")
             self.forward_to_main_router(parsed_message)
         
         time.sleep(2)
@@ -255,7 +290,7 @@ class RouterThread(threading.Thread):
             self.router_id,
             "releasing lock, client can send the message"
         )
-
+        # releasing lock, client can send the message
         self.sync_event_message.set()
 
         sender_socket = self.arp_table_socket[ip_address]
@@ -271,22 +306,32 @@ class RouterThread(threading.Thread):
             sender_socket,
             handler
         )
-        utils.show_status(self.router_id, "packet received successfully")
 
     """
     Always called by an auxiliary router.
 
     Tells the main router to start listening for a message from this router.
     """
-    def notify_incoming_connection(self):
+    def notify_incoming_message(self):
         utils.show_status(
-            self.client_id,
-            "notifying an incoming connection from this router"
+            self.router_id,
+            "notifying an incoming message from this router"
         )
         
         my_ip_address = self.router_data["server_side"]["ip_address"]
+
+        for router, router_data in self.routers_data.items():
+            if(router_data["server_side"]["ip_address"] == \
+            self.main_router_ip_address):
+                router_id = router
+                break
+
+        router_thread = self.routers_threads[router_id]
+
+        # tell the main router to start listening for a message 
+        # from this router
         listen_task = threading.Thread(
-            target=self.router_thread.listen_server_side_main_router,
+            target=router_thread.listen_server_side_main_router,
             args=[my_ip_address],
             daemon=True
         )
@@ -346,9 +391,8 @@ class RouterThread(threading.Thread):
             client_connection not in self.arp_table_socket):    
                     ip_address = self.clients_gateway_ip[address[1]]
                     self.arp_table_socket[ip_address] = client_connection
-                    msg = " ".join(["connected with client", str(ip_address)])
+                    msg = " ".join(["connected with client", ip_address])
                     utils.show_status(self.router_id, msg)
-                    utils.show_status(self.router_id, str(self.arp_table_socket))
                     self.sync_event_connection.set() # waiting for router approval
                     break # only the first valid connection is accepted
 
@@ -358,7 +402,7 @@ class RouterThread(threading.Thread):
     arp table socket.
     """
     def listen_connections_server_side(self):
-        connected = False
+
         network_connection, address = check.socket_accept(
             self.socket_server_side,
             "Connection could not be established"
@@ -366,8 +410,7 @@ class RouterThread(threading.Thread):
     
         if(network_connection != None and
             network_connection not in self.arp_table_socket):
-            
-            connected = True
+
             if(address[1] in self.routers_gateway_ip):
                 ip_address = self.routers_gateway_ip[address[1]]
                 msg = " ".join(["connected with router:", ip_address])
@@ -377,22 +420,25 @@ class RouterThread(threading.Thread):
                 utils.show_status(self.router_id, msg)
                 ip_address = self.server_ip
             self.arp_table_socket[ip_address] = network_connection
-        
-        return connected
+            return True
+        return False
 
+    """
+    Tries to accept connections from routers and the server of the network.
+    """  
     def accept_connections(self):
         connections = len(self.routers_gateway_ip) + 1
 
         while connections > 0:
-            connected_to_all = self.listen_connections_server_side()
-            connections -= 1
+            connected = self.listen_connections_server_side()
+            if(connected is True): 
+                connections -= 1
 
         utils.show_status(self.router_id, "all connections established")
-        return connected_to_all
-   
-    def connect_with_routers(self, network_connections):
+
+    def connect_with_routers(self):
         connected_to_all = True
-        for ip_address, port in network_connections.items():
+        for ip_address, port in self.network_connections.items():
                 connected = check.socket_connect(
                     self.socket_server_side,
                     ("localhost", port),
@@ -410,18 +456,15 @@ class RouterThread(threading.Thread):
     """
     A router connects with other routers or the server.
     
-    This happens depending on the network configuration file, in the dictionary 
-    network_connections.
+    This happens if specified in the network configuration file.
     """
     def go_online(self):
-        # time.sleep(2)
-        network_connections = self.router_data["network_connections"]
-
-        if(self.server_ip in network_connections): 
+        if(self.server_ip in self.network_connections): 
             self.connected_to_server = True
-            connected = self.accept_connections() 
+            self.accept_connections() 
+            connected = True
         else:   # connect with routers in network_connections
-            connected = self.connect_with_routers(network_connections)
+            connected = self.connect_with_routers()
             
         utils.show_status(self.router_id, "connected to the network")
         return connected

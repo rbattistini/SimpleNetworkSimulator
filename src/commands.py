@@ -2,6 +2,7 @@
 Functions used to implement commands.
 """
 import sys
+import os
 import threading
 import time
 import logging
@@ -44,11 +45,11 @@ def launch_router(router_id, entities_threads, network_data):
 
     router_ip_server_side = routers_data[router_id]["server_side"]["ip_address"]
     router_ip_client_side = routers_data[router_id]["client_side"]["ip_address"]
-    router_data = routers_data[router_id]
 
     arp_table_mac = data.router_arp_table_generator(
+        router_id,
         servers_data,
-        router_data
+        routers_data
     )
 
     routers_gateway_ip = data.routers_ip_port_generator(
@@ -124,6 +125,7 @@ def launch_server(server_id, entities_threads, network_data):
         routers_data
     )
 
+    # find the id of the router to which the client will connect
     for router, router_data in routers_data.items():
         if(router_data["server_side"]["ip_address"] == default_gateway):
             router_id = router
@@ -175,6 +177,7 @@ def launch_client(clients_threads, client_id, client_data, routers_data, routers
 
     default_gateway = client_data["gateway_ip"]
 
+    # find the id of the router to which the server will connect
     for router, router_data in routers_data.items():
         if(router_data["client_side"]["ip_address"] == default_gateway):
             router_id = router
@@ -202,22 +205,22 @@ def launch_client(clients_threads, client_id, client_data, routers_data, routers
     client_thread.start()
 
 def stop_client(clients_threads, client_id):
-    clients_threads[client_id].join()
-    utils.show_status("cli", "client exited successfully")
+    clients_threads[client_id].go_offline()
+    utils.show_status("main", "client went offline")
 
 """
 Show clients status
 """
 def show_address_book(client_ids, clients_data, clients_threads):
 
-    row_format = " {:10} | {:10} | {:10}"
-    show_table_header("Clients list", row_format)
-    hosts_status(clients_data, clients_threads, row_format)
+    row_format = " {:<3} | {:10} | {:15} | {:10}"
+    show_table_header("Clients list", row_format, show_ids = True)
+    hosts_status(clients_data, clients_threads, row_format, client_ids)
 
 """
 Show host id, ip_address and status.
 """
-def hosts_status(hosts_data, hosts_thread, row_format):
+def hosts_status(hosts_data, hosts_thread, row_format, hosts_ids = None):
     status = ""
     for host, host_data in hosts_data.items():
         if(host in hosts_thread):
@@ -225,7 +228,11 @@ def hosts_status(hosts_data, hosts_thread, row_format):
         else:
             status = " offline"
         ip_address = host_data["ip_address"]
-        print(row_format.format(host, ip_address, status))
+        if(hosts_ids is not None):
+            host_id = hosts_ids.index(host) + 1
+            print(row_format.format(host_id, host, ip_address, status))
+        else:
+            print(row_format.format(host, ip_address, status))
 
 """
 Show router id, ip_address and status.
@@ -240,12 +247,13 @@ def routers_status(routers_data, routers_threads, row_format):
         ip_address = router_data["server_side"]["ip_address"]
         print(row_format.format(router_id, ip_address,status))
   
-def show_table_header(title, row_format):
+def show_table_header(title, row_format, show_ids = False):
 
-    print(title)
-    utils.print_separator(False)
-
-    print(row_format.format("entity", "ip_address", "status"))
+    print(title + "\n")
+    if(show_ids is False):
+        print(row_format.format("entity", "ip_address", "status"))
+    else:
+        print(row_format.format("id", "entity", "ip_address", "status"))
     utils.print_separator(0,50,"-", False)
     print("")
 
@@ -275,7 +283,10 @@ def ask_recipient(client_ids, clients_data, clients_threads):
     print(client_id_request + " that will receive the message")
     show_address_book(client_ids, clients_data, clients_threads)
     client_id = utils.retrieve_id(utils.is_in_list, client_ids, client_ids)
-    return client_ids[client_id]
+    if(client_id == None):
+        return None
+    else:
+        return client_ids[client_id]
 
 """
 Returns a string representing the identifier of the client that should send
@@ -286,8 +297,11 @@ Note that the client must be online.
 def ask_sender(client_ids, clients_data, clients_threads):
     print(client_id_request + " that will send a message")
     show_address_book(client_ids, clients_data, clients_threads)
-    client_id = utils.retrieve_id(utils.is_in_list, clients_threads, client_ids)
-    return client_ids[client_id]
+    client_id = utils.retrieve_id(utils.is_in_dict, clients_threads, client_ids)
+    if(client_id == None):
+        return None
+    else:
+        return client_ids[client_id]
 
 """
 Ask all currently executing threads to close their connections and waits for 
@@ -295,57 +309,61 @@ their effective termination.
 """
 def close_all_connections(entities_threads):
     utils.show_status("main", "beginning shutdown")
-    # unpack dictionary
-    servers_threads = entities_threads["servers_threads"]
-    routers_threads = entities_threads["routers_threads"]
-    clients_threads = entities_threads["clients_threads"]
+    # unpack dictionary and creating defensive copies to avoid changing 
+    # size of the dictionaries during iteration
 
-    # creating defensive copies to avoid changing size of the dictionary during
-    # iteration
-    servers_threads_list = list(servers_threads.values())
-    routers_threads_list = list(routers_threads.values())
-    clients_threads_list = list(clients_threads.values())
+    if("servers_threads" in entities_threads):
+        servers_threads = entities_threads["servers_threads"]
+        servers_threads_list = list(servers_threads.values())
+        for server_thread in servers_threads_list:
+            server_thread.join()
+    if("routers_threads" in entities_threads):
+        routers_threads = entities_threads["routers_threads"]
+        routers_threads_list = list(routers_threads.values())
+        for router_thread in routers_threads_list:
+            router_thread.join()
 
-    for server_thread in servers_threads_list:
-        server_thread.join()
-
-    for router_thread in routers_threads_list:
-        router_thread.join()
-
-    for client_thread in clients_threads_list:
-        client_thread.join()
+    if("clients_threads" in entities_threads):
+        clients_threads = entities_threads["clients_threads"]
+        clients_threads_list = list(clients_threads.values())
+        for client_thread in clients_threads_list:
+            client_thread.join()
 
     utils.show_status("main", "shutdown completed")
 
 # functions used to execute commands
 
 def client_go_online(client_ids, clients_threads, clients_data, routers_data, routers_threads):
-    print(client_id_request + " that will go online")
+    print(client_id_request + " that will go online:\n")
     show_address_book(client_ids, clients_data, clients_threads)
     client_id = utils.retrieve_id(utils.not_in_dict, clients_threads, client_ids)
-    client_id = client_ids[client_id]
+    if(client_id is not None):
+        client_id = client_ids[client_id]
 
-    launch_client(
-        clients_threads,
-        client_id,
-        clients_data[client_id],
-        routers_data,
-        routers_threads
-    )
+        launch_client(
+            clients_threads,
+            client_id,
+            clients_data[client_id],
+            routers_data,
+            routers_threads
+        )
 
 def client_go_offline(client_ids, clients_data, clients_threads):
     print(client_id_request + " that will go offline")
     show_address_book(client_ids, clients_data, clients_threads)
     print(clients_threads)
     client_id = utils.retrieve_id(utils.is_in_dict, clients_threads, client_ids)
-    client_id = client_ids[client_id]
-    stop_client(clients_threads, client_id)
+    if(client_id is not None):
+        client_id = client_ids[client_id]
+        stop_client(clients_threads, client_id)
 
 def send_message_routine(client_ids, clients_threads, clients_data):
     recipient = ask_recipient(client_ids, clients_data, clients_threads)
-    sender = ask_sender(client_ids, clients_data, clients_threads)
-    message = ask_message()
-    send_message(recipient, sender, message, clients_threads, clients_data)
+    if(recipient is not None):
+        sender = ask_sender(client_ids, clients_data, clients_threads)
+    if(recipient is not None and sender is not None):
+        message = ask_message()
+        send_message(recipient, sender, message, clients_threads, clients_data)
 
 """
 Called by the cli or the signal handler, used to show the exit screen.
@@ -353,10 +371,8 @@ Called by the cli or the signal handler, used to show the exit screen.
 def clean_quit(entities_threads):
     # utils.clear()
     print("Exiting from the simulation...")
-    # logging.info(str(entities_threads))
     close_all_connections(entities_threads)
-    # time.sleep(5)
-    sys.exit()
+    os._exit(0)
 
 def show_help():
     utils.print_separator()

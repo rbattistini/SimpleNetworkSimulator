@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import sys
 import signal
+import time
 import utilities as utils
 import commands as cmd
 import data_handling as data
@@ -15,13 +16,16 @@ command_ids = [
 
 prompt_dict = {
     "header" : "Commands:\n",
-    "footer" : "\n\nType a number to launch the associated command:",
+    "footer" : "\n\nType a number to launch the associated command: \n" \
+            + "(type q to return to this commands' list)",
 }
+
+entities_threads = {}
 
 # functions used by the cli.
 
 def init():
-    network_data = data.load_network()
+    network_data = data.load_network("../resources/network.yml")
     # unpack dictionaries
     servers_data = network_data["servers_data"]
     routers_data = network_data["routers_data"]
@@ -29,24 +33,34 @@ def init():
 
     client_ids = data.load_client_ids(clients_data)
 
-    servers_thread = {}
+    servers_threads = {}
     routers_threads = {}
     clients_threads = {}
 
+    global entities_threads
     entities_threads = {
-        "servers_threads" : servers_thread,
+        "servers_threads" : servers_threads,
         "routers_threads" : routers_threads,
         "clients_threads" : clients_threads
     }
 
-    # launch routers
+    # launch main router connected to the server
     for router_id, router_data in routers_data.items():
-        cmd.launch_router(router_id, entities_threads, network_data)
-        # break
-
+        network_connections = router_data["network_connections"]
+        server_ip = router_data["server_side"]["server_ip"]    
+        if(server_ip in network_connections):
+            cmd.launch_router(router_id, entities_threads, network_data)
+        
     # launch server  
     for server_id, server_data in servers_data.items():
         cmd.launch_server(server_id, entities_threads, network_data)
+    
+    # launch other routers
+    for router_id, router_data in routers_data.items():
+        network_connections = router_data["network_connections"]
+        server_ip = router_data["server_side"]["server_ip"]    
+        if(server_ip not in network_connections):
+            cmd.launch_router(router_id, entities_threads, network_data)
 
     return network_data, entities_threads, client_ids
 
@@ -133,7 +147,7 @@ Command line interface main loop.
 """
 def launch_cli():
     
-    utils.config_logger("debug.log")
+    utils.config_logger("messages.log")
     show_welcome()
     network_data, entities_threads, client_ids = init()
     signal.signal(signal.SIGINT, cmd.MyHandler(entities_threads))
@@ -144,7 +158,7 @@ def launch_cli():
             show_prompt(command_ids)
             command_id = utils.retrieve_id(utils.is_in_list, command_ids, command_ids)
 
-            #utils.clear()
+            utils.clear()
             utils.print_separator()
 
             launch_command(
@@ -154,7 +168,7 @@ def launch_cli():
                 client_ids
             )
 
-            #utils.clear()
+            utils.clear()
 
     except KeyboardInterrupt:
         pass

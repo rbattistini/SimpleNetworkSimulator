@@ -153,6 +153,9 @@ def retrieve_id(validator, validable_list, entities_to_id):
     request_completed = False
     while request_completed is False:
         id = input("\n> ")
+        if(id == "q"):
+            request_completed = True
+            return None
         if(is_number(id) and validator(id, validable_list, entities_to_id)):
             request_completed = True
             return int(id)-1

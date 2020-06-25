@@ -114,7 +114,7 @@ class ServerThread(threading.Thread):
 
     def resend_back_message(self, parsed_message):    
         msg = " ".join(["client", parsed_message["destination_ip"], \
-            "is not online: resending message back", str(parsed_message)])
+            "is not online: resending message back"])
         utils.show_status(self.server_id, msg)
 
         sender_ip_address = parsed_message["source_ip"]
@@ -155,7 +155,7 @@ class ServerThread(threading.Thread):
     States what type of messages the server can handle.
     """
     def handle_message(self, parsed_message):
-        time.sleep(3)
+        time.sleep(2)
         utils.show_status(
             self.server_id,
             "deciding how to handle the message..."
@@ -192,7 +192,6 @@ class ServerThread(threading.Thread):
     Connects to its default gateway.
     """
     def go_online(self):
-        # time.sleep(1)
         utils.show_status(self.server_id, "connecting to the network")
 
         router_port = self.server_data["gateway_port"]
@@ -206,7 +205,7 @@ class ServerThread(threading.Thread):
         )
         
         if(connected is True):
-            msg = " ".join(["connected to", gateway_ip, "going online"])
+            msg = " ".join(["connected to", gateway_ip])
             utils.show_status(self.server_id, msg)
 
         return connected

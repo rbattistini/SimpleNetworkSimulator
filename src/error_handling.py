@@ -8,8 +8,10 @@ import socket
 import logging
 import commands as cmd
 import utilities as utils
+from cli import entities_threads
 
 default_error_message = "\n Socket error occurred:"
+default_exit_message = "\n Forcing shutdown "
 
 def socket_create(address, backlog = 0, timeout = 0, reuse_address = False, additional_error_message = ""):
     try:
@@ -19,7 +21,7 @@ def socket_create(address, backlog = 0, timeout = 0, reuse_address = False, addi
         )
         
         if(reuse_address == True):
-            connection.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
+            connection.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
 
         connection.bind(address)
 
@@ -29,7 +31,8 @@ def socket_create(address, backlog = 0, timeout = 0, reuse_address = False, addi
             connection.settimeout(timeout)
         
     except socket.error as error_msg:
-        message = "[" + id + "]: " + default_error_message + error_msg + "\n" + additional_error_message
+        message = "[" + id + "]: " + default_error_message + error_msg \
+        + "\n" + additional_error_message
         logging.error(message)
         return None
     
@@ -39,12 +42,10 @@ def socket_connect(connection, address, id, additional_error_message = ""):
     try:
         connection.connect(address)
     except socket.error as msg:
-        msg = default_error_message + str(msg) + "\n" + additional_error_message
+        msg = default_exit_message + str(msg) + "\n" + additional_error_message
         msg = " ".join(["[" + id + "]:", msg])
         logging.error(msg)
-        cmd.clean_quit()
-        # print(default_error_message, msg)
-        # print(additional_error_message)
+        cmd.clean_quit(entities_threads)
         return False
     return True
 
@@ -57,8 +58,6 @@ def socket_send(connection, packet, id, additional_error_message = ""):
         msg = default_error_message + str(msg) + "\n" + additional_error_message
         msg = " ".join(["[" + id + "]:", msg])
         logging.error(msg)
-        # print(default_error_message, msg)
-        # print(additional_error_message)
         return False
     return True
     
@@ -70,15 +69,21 @@ def socket_recv(connection, id, additional_error_message = "",
     except socket.timeout as msg:
         return None
     except socket.error as msg:
-        msg = default_error_message + str(msg) + "\n" + additional_error_message
+        msg = default_exit_message + str(msg) + "\n" + additional_error_message
         msg = " ".join(["[" + id + "]:", msg])
         logging.error(msg)
-        # print(default_error_message, msg)
-        # print(additional_error_message)
-        cmd.clean_quit()
+        cmd.clean_quit(entities_threads)
         return None
     return received_message
 
-def socket_accept(socket, id, additional_error_message = ""):
-    connection, address = socket.accept()
+def socket_accept(conn_socket, id, additional_error_message = ""):
+    try:
+        connection, address = conn_socket.accept()
+    except socket.timeout as msg:
+        return (None, None)
+    except socket.error as msg:
+        msg = default_exit_message + str(msg) + "\n" + additional_error_message
+        msg = " ".join(["[" + id + "]:", msg])
+        logging.error(msg)
+        cmd.clean_quit(entities_threads)
     return connection, address
