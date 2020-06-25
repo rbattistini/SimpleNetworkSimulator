@@ -18,13 +18,30 @@ L'obiettivo è quello di simulare un'architettura Server-Router-Client come most
 
 ### Feature aggiuntive
 
-- Le specifiche riguardanti le entità che formano il network sono memorizzate in un file di configurazione apposito.
-
-Sono disponibili due versioni del network, "network_basic" è stato impiegato per i test iniziali mentre "network" rappresenta l'architettura richiesta dalla traccia.
-
-In generale a ciascun router può essere legato un numero arbitrario di client.
+- Le specifiche riguardanti le entità che formano il network sono memorizzate in un file di configurazione apposito. 
+  Sono disponibili due versioni del network, `network_basic` è stato impiegato per i test iniziali mentre `network` rappresenta l'architettura richiesta dalla traccia. 
+  In generale a ciascun router può essere legato un numero arbitrario di client.
 
 - Le arp table dei router non contengono infomazioni relative ai client. Sono state perciò implementati i meccanismi di ARP request e ARP reply per permettere ai router di ricavare informazioni sull'indirizzo mac associato a ciascun client.
+
+## Panoramica
+
+L'interazione con l'utente avviene esclusivamente tramite terminale.
+Si inseriscono degli identificativi numerici ai quali corrispondono i possibili comandi da eseguire.
+
+Per la descrizione dei singoli comandi si rimanda alla sezione di aiuto accessibile a riga di comando.
+
+Ogni comando effettuato provoca una serie di azioni che sono registrate su un file di log. Il nome di questo file è `messages.log`.
+
+Per poter capire cosa accade nel corso della simulazione bisogna consultare quel file.
+
+Per implementare l'architettura si è scelto di impiegare più thread.
+In particolare ogni client al momento del lancio avrà un thread per l'ascolto dei messaggi. Lo stesso vale per il server.
+
+Per quanto riguarda il router è necessario distinguere tra due casi:
+- se si tratta del router principale, ovvero del router collegato direttamente al server, allora è creato un solo thread all'inizio per stabilire le connessioni con l'altro router e il server. Dopodiché qualsiasi interazione con il router richiede la creazione di un apposito thread. Il router mette a disposizione la possibilità di creare un thread per richiedere una connessione (creato dai client) e di creare una thread per inviare un messaggio (creato sia dagli host che dal router). Stabilita la connessione o inviato il messaggio il thread si chiude.
+-  se si tratta del router secondario, ovvero del router collegato indirettamente al server, allora si crea un thread per l'ascolto dei messaggi da parte del router principale. In ogni caso i client per comunicare con il router creano un apposito thread.
+
 
 ## Avviare la simulazione
 
