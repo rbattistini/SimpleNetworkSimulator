@@ -1,14 +1,9 @@
 :experimental:
 :sourcedir: src
-:toc:
-:toc-placement!:
 
 ifdef::env-github[]
 :tip-caption: :bulb:
 :note-caption: :information_source:
-:important-caption: :heavy_exclamation_mark:
-:caution-caption: :fire:
-:warning-caption: :warning:
 endif::[]
 
 = Simple Network Simulator
@@ -18,8 +13,6 @@ The aim is simulating a Client-Router-Server architecture like the one in
 the following image:
 
 image:resources/server_router_client.png[A picture of the network]
-
-toc::[]
 
 == Features
 
@@ -41,7 +34,7 @@ toc::[]
 
 The interaction with the application happens through a simple TUI.
 To each command is associated a numerical id. A description of the available
-commands can be accessed pressing kbd:[3] in the commands' list.
+commands can be accessed pressing kbd:[4] in the commands' list.
 
 The result of each executed command is registered in a log called
 `messages.log`. To understand what happens during the simulation that file
