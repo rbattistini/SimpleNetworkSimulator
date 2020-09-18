@@ -64,9 +64,11 @@ This happens when:
 When one of these actions is completed the thread closes.
 
 An *auxiliary router* works differently.
+For each auxiliary router there is a thread that listens for incoming
+messages from the main router.
 
-gi da parte del router principale. In ogni caso i client per comunicare con il
- router creano un apposito thread.
+Anyway every time a client sends a message a daemon thread is created
+to allow communications between a client and its router.
 
 === Starting the simulation
 
